@@ -296,7 +296,7 @@ class ByteTable:
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
         digest = self.sha256()
-        np.savez(path, bytes=self.bytes, lengths=self.lengths,
+        np.savez_compressed(path, bytes=self.bytes, lengths=self.lengths,
                  pos_dim=np.int64(self.pos_dim), kind=np.array(self.kind),
                  format_version=np.int64(TABLE_FORMAT_VERSION),
                  tokenizer_sha256=np.array(self.tokenizer_sha256),
@@ -573,7 +573,7 @@ def build_all(tb: TokenizerBundle, out_dir: Path, pos_dims: Sequence[int] = POS_
     out_dir.mkdir(parents=True, exist_ok=True)
     manifest = {
         "format_version": TABLE_FORMAT_VERSION,
-        "tokenizer": {"path": str(tb.path), "sha256": tb.sha256, "vocab_size": tb.vocab_size,
+        "tokenizer": {"file": tb.path.name, "sha256": tb.sha256, "vocab_size": tb.vocab_size,
                       "added_tokens": len(tb.added), "special_ids": len(tb.special_ids),
                       "hf_id": HF_ID},
         "char_dim": CHAR_DIM,
