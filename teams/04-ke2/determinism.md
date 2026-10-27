@@ -1,4 +1,10 @@
-# CPU decoding determinism
+# Tokenizer decoding determinism and optional MPS codec checks
+
+`src/determinism/tokenizer_decode_cpu.py` tests token IDs -> decoded text on CPU.
+`src/determinism/codec_mps.py` tests raw byte tables -> forward KE vectors on MPS,
+with CPU codec comparisons. Neither is the KE-vector-to-ID reference decoder.
+The required output name `results/decode_cpu_sha256.txt` is retained from the
+week plan; its hashes describe tokenizer decoding.
 
 This checks that decoding every token ID gives identical results in three fresh
 CPU processes. It uses the Rust `tokenizers` engine through its Python API; no
@@ -8,10 +14,10 @@ Run from the lab repository root with a local tokenizer artifact:
 
 ```sh
 python3 -m pip install tokenizers==0.22.2 pytest
-python3 teams/04-ke2/determinism/decode_cpu.py \
+python3 teams/04-ke2/src/determinism/tokenizer_decode_cpu.py \
   --tokenizer /path/to/tokenizer.json \
   --expected-sha256 01d968a7970b029c071b29f060abf6104b66168dedf2ff3b1a0290a545739fff
-python3 -m pytest teams/04-ke2/tests/test_determinism.py -q
+python3 -m pytest teams/04-ke2/tests/test_tokenizer_decode_cpu.py -q
 ```
 
 Keep the tokenizer outside this repository. The script never downloads artifacts.
@@ -70,7 +76,7 @@ tokenizer, decoder or token policy.
 
 ## Optional MPS codec experiment
 
-The required CPU decoding result above stands separately. `codec_mps.py` adds an
+The CPU tokenizer-decoding result above stands separately. `codec_mps.py` adds an
 optional Apple GPU experiment on the forward codec, after table construction.
 It excludes the learned projection and backward pass.
 
@@ -82,7 +88,7 @@ Install PyTorch and NumPy in addition to the CPU-check requirements. The measure
 versions are recorded in `codec_mps_results.json`.
 
 ```sh
-python3 teams/04-ke2/determinism/codec_mps.py \
+python3 teams/04-ke2/src/determinism/codec_mps.py \
   --tables /path/to/tables \
   --codec-src /path/to/kronecker-embeddings/src
 ```

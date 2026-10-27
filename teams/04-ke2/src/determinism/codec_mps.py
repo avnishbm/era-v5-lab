@@ -12,7 +12,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-TEAM_DIR = Path(__file__).resolve().parents[1]
+TEAM_DIR = Path(__file__).resolve().parents[2]
 TOKENIZER_SHA = "01d968a7970b029c071b29f060abf6104b66168dedf2ff3b1a0290a545739fff"
 HASH_FORMAT = "ke2-codec-float32-v1"
 

@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-SCRIPT = Path(__file__).resolve().parents[1] / "determinism/codec_mps.py"
+SCRIPT = Path(__file__).resolve().parents[1] / "src/determinism/codec_mps.py"
 spec = importlib.util.spec_from_file_location("codec_mps", SCRIPT)
 cm = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(cm)

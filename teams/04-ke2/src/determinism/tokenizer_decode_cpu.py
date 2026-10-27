@@ -14,7 +14,7 @@ import sys
 from pathlib import Path
 
 HASH_FORMAT = "ke2-decode-cpu-v1"
-TEAM_DIR = Path(__file__).resolve().parents[1]
+TEAM_DIR = Path(__file__).resolve().parents[2]
 
 
 def hash_rows(rows):

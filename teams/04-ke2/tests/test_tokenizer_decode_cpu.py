@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pytest
 
-SCRIPT = Path(__file__).resolve().parents[1] / "determinism" / "decode_cpu.py"
-spec = importlib.util.spec_from_file_location("decode_cpu", SCRIPT)
+SCRIPT = Path(__file__).resolve().parents[1] / "src" / "determinism" / "tokenizer_decode_cpu.py"
+spec = importlib.util.spec_from_file_location("tokenizer_decode_cpu", SCRIPT)
 dc = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(dc)
 
