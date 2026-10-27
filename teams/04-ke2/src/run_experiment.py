@@ -5,6 +5,8 @@ Steps (each can be skipped with ``--skip``):
 
 ``tables``           decode and raw byte tables, every P                         (build_tables.py)
 ``proofs``           Lemma 1, Lemma 2 and Theorem 1 on the real tokenizer          (proofs/proof_checks.py)
+``decode_ref``       forward-encode a sample of IDs, decode with the reference
+                     decoder, and repeat the hash in a fresh process              (decode_ref.py)
 ``cpu_determinism``  tokenizer decoding in three fresh CPU processes             (determinism/tokenizer_decode_cpu.py)
 ``mps``              forward codec on MPS vs CPU, three fresh processes, if MPS  (determinism/codec_mps.py)
 
@@ -14,7 +16,7 @@ into another.
 
 Usage
 -----
-    python src/run_experiment.py [--tokenizer-dir DIR] [--pos-dims 32 64] [--skip mps ...]
+    python src/run_experiment.py [--tokenizer-dir DIR] [--pos-dims 32 64] [--sample 4096] [--skip mps ...]
 """
 
 from __future__ import annotations
@@ -24,6 +26,7 @@ import json
 import logging
 import subprocess
 import sys
+import tempfile
 import time
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
@@ -35,14 +38,18 @@ if __package__ in (None, ""):  # run as a script: make ke2 and the upstream code
 
     ensure_kronecker_embeddings()
 
+import numpy as np
+
+import decode_ref
+from ke2.codec import encode_ids
 from ke2.config import POS_DIMS, SRC_DIR, TEAM_DIR, TOKENIZER_SHA256
-from ke2.tables import KINDS
-from ke2.tokenizer import resolve_tokenizer_path
+from ke2.tables import KINDS, ByteTable, table_path
+from ke2.tokenizer import load_tokenizer, resolve_tokenizer_path
 from ke2.upstream import ensure_kronecker_embeddings
 
 log = logging.getLogger("run_experiment")
 
-STEPS = ("tables", "proofs", "cpu_determinism", "mps")
+STEPS = ("tables", "proofs", "decode_ref", "cpu_determinism", "mps")
 
 
 @dataclass(frozen=True)
@@ -86,6 +93,53 @@ def step_proofs(ctx: Context) -> None:
     _run([sys.executable, SRC_DIR / "proofs" / "proof_checks.py", ctx.tokenizer_dir, ctx.results / "proof_checks.json"])
 
 
+def step_decode_ref(ctx: Context) -> None:
+    """Round-trip a sample of IDs through the forward codec and the reference decoder."""
+    tb = load_tokenizer(str(ctx.tokenizer_dir / "tokenizer.json"), expected_sha256=TOKENIZER_SHA256)
+    ids = decode_ref.sample_token_ids(tb.vocab_size, tb.special_ids, n=ctx.sample, seed=ctx.seed)
+    runs: dict[str, dict] = {}
+    with tempfile.TemporaryDirectory() as tmp:
+        for P in ctx.pos_dims:
+            for kind in KINDS:
+                path = table_path(ctx.tables_dir, kind, P)
+                table = ByteTable.load(path, tokenizer=tb)
+                vectors = encode_ids(ids, table).numpy()
+                start = time.perf_counter()
+                result = decode_ref.decode(vectors, decode_ref.CodeTable.from_byte_table(table))
+                seconds = time.perf_counter() - start
+                vectors_file = Path(tmp) / f"{kind}_P{P}.npy"
+                np.save(vectors_file, vectors)
+                fresh = _run([sys.executable, SRC_DIR / "decode_ref.py", "--table", path, "--vectors", vectors_file])
+                expected_bytes = [table.row(int(i)) for i in ids]
+                runs[f"{kind}_P{P}"] = {
+                    "kind": kind,
+                    "pos_dim": P,
+                    "table_sha256": table.sha256(),
+                    "vectors": len(ids),
+                    "ids_recovered": int((result.token_ids == ids).sum()),
+                    "bytes_recovered": int(
+                        sum(a == b for a, b in zip(result.token_bytes, expected_bytes, strict=True))
+                    ),
+                    "ties": int((result.margins == 0).sum()),
+                    "min_margin": float(result.margins.min()),
+                    "median_margin": float(np.median(result.margins)),
+                    "min_score": float(result.scores.min()),
+                    "sha256": result.sha256(),
+                    "fresh_process_sha256_equal": fresh.stdout.strip() == result.sha256(),
+                    "seconds": round(seconds, 1),
+                }
+                log.info("decode_ref %-6s P=%d: %d/%d IDs, min margin %.4g, hash %s…", kind, P,
+                         runs[f"{kind}_P{P}"]["ids_recovered"], len(ids), result.margins.min(),
+                         result.sha256()[:12])  # fmt: skip
+    _write_json(ctx.results / "decode_ref" / "summary.json", {
+        "format": decode_ref.HASH_FORMAT,
+        "encoder": "upstream kronecker_codec, float32, CPU",
+        "decoder": "decode_ref.py, cosine similarity, float64, CPU, exhaustive over the vocabulary",
+        "sample": {"n": len(ids), "seed": ctx.seed, "edges": "0, 77, 173, V-1, first 8 special IDs"},
+        "runs": runs,
+    })  # fmt: skip
+
+
 def step_cpu_determinism(ctx: Context) -> None:
     _run([sys.executable, SRC_DIR / "determinism" / "tokenizer_decode_cpu.py", "--tokenizer",
           ctx.tokenizer_dir / "tokenizer.json", "--expected-sha256", TOKENIZER_SHA256, "--out", ctx.results])  # fmt: skip
@@ -104,6 +158,7 @@ def step_mps(ctx: Context) -> None:
 STEP_FUNCS: dict[str, Callable[[Context], None]] = {
     "tables": step_tables,
     "proofs": step_proofs,
+    "decode_ref": step_decode_ref,
     "cpu_determinism": step_cpu_determinism,
     "mps": step_mps,
 }
@@ -245,6 +300,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--tokenizer-dir", type=Path, help="folder with tokenizer.json and special_tokens_map.json")
     ap.add_argument("--pos-dims", type=int, nargs="+", default=list(POS_DIMS))
+    ap.add_argument("--sample", type=int, default=4096, help="token IDs in the decode_ref round trip")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--results", type=Path, default=TEAM_DIR / "results")
     ap.add_argument("--skip", nargs="*", default=[], choices=STEPS)
@@ -253,7 +309,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s", datefmt="%H:%M:%S")
 
     tokenizer_dir = (a.tokenizer_dir or resolve_tokenizer_path().parent).resolve()
-    ctx = Context(tokenizer_dir, tuple(a.pos_dims), a.results.resolve(), 0, a.seed)
+    ctx = Context(tokenizer_dir, tuple(a.pos_dims), a.results.resolve(), a.sample, a.seed)
     for name in STEPS:
         if name in a.skip:
             log.info("== %s: skipped", name)
