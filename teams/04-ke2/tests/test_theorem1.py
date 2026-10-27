@@ -10,10 +10,11 @@ from collections import defaultdict
 from itertools import combinations
 
 import torch
+
 from forward import CAUSES, code_digest, codes, decode_style_bytes, pair_cause, truncate
 
 PS = (32, 64)
-POOL = list("aZ5-_ ") + ["é", "ñ", "ಕ", "ನ", "್", "ಡ", "ಾ", "ಿ", "ि", "र", "ा", "日", "😀"]
+POOL = [*"aZ5-_ ", "é", "ñ", "ಕ", "ನ", "್", "ಡ", "ಾ", "ಿ", "ि", "र", "ा", "日", "😀"]
 
 
 def random_word(rng):
@@ -32,25 +33,25 @@ def synthetic_vocab(rng):
         vocab.append((raw, raw if fed is None else fed))
 
     for _ in range(1500):
-        add(random_word(rng))                                       # ordinary tokens
+        add(random_word(rng))  # ordinary tokens
     for _ in range(30):
-        base = ("ಕನ್ನಡ" * rng.randrange(10, 14)).encode("utf-8")      # long, same start: truncation collisions
+        base = ("ಕನ್ನಡ" * rng.randrange(10, 14)).encode("utf-8")  # long, same start: truncation collisions
         for _ in range(4):
             add(base + random_word(rng))
     for n in range(33, 75):
-        add(b"-" * n)                                               # runs of one character
+        add(b"-" * n)  # runs of one character
     for _ in range(20):
         w = random_word(rng)
         add(w)
-        add(w)                                                      # exact duplicates
+        add(w)  # exact duplicates
     add(b"<s>")
-    add(b"<s>")                                                     # special token and ordinary text, same bytes
+    add(b"<s>")  # special token and ordinary text, same bytes
     for frag in (b"\xe0\xb2", b"\x95", b"\xa8", b"\xb2\x95", b"\xe0"):
-        add(frag, decode_style_bytes(frag))                         # partial letters: decode gives U+FFFD
+        add(frag, decode_style_bytes(frag))  # partial letters: decode gives U+FFFD
     for _ in range(6):
-        add(b"\x95" + w_long(rng))                                  # long, start with a stray tail byte: repository rule cuts to nothing
+        add(b"\x95" + w_long(rng))  # long, start with a stray tail byte: repository rule cuts to nothing
     add(b"")
-    add(b"")                                                        # empty tokens
+    add(b"")  # empty tokens
     return vocab
 
 
@@ -63,9 +64,9 @@ def check_shared_codes_are_exactly_equal_cut_strings_and_every_pair_has_a_cause(
         for dtype in (torch.float32, torch.bfloat16):
             digests = []
             for i in range(0, len(cuts), 500):
-                digests += [code_digest(z) for z in codes(cuts[i:i + 500], P, dtype)]
+                digests += [code_digest(z) for z in codes(cuts[i : i + 500], P, dtype)]
             by_code, by_cut = defaultdict(set), defaultdict(set)
-            for i, (d, c) in enumerate(zip(digests, cuts)):
+            for i, (d, c) in enumerate(zip(digests, cuts, strict=True)):
                 by_code[d].add(i)
                 by_cut[c].add(i)
             # Theorem 1: the two partitions of the vocabulary are the same
@@ -92,7 +93,7 @@ def test_theorem1_with_the_proposed_cut_rule():
 def test_pair_cause_is_none_when_codes_differ():
     assert pair_cause(b"ab", b"ac", b"ab", b"ac", 32) is None
     assert pair_cause(b"a" * 40, b"a" * 40 + b"b", b"a" * 40, b"a" * 40 + b"b", 32) == "truncation"
-    short, longer = b"a" * 30, b"a" * 30 + "ಕ".encode()             # only one is longer than P: 33 bytes cut back to 30
+    short, longer = b"a" * 30, b"a" * 30 + "ಕ".encode()  # only one is longer than P: 33 bytes cut back to 30
     assert pair_cause(short, longer, short, longer, 32) == "truncation"
     assert pair_cause(b"<s>", b"<s>", b"<s>", b"<s>", 32) == "same_raw"
     assert pair_cause(b"\xe0\xb2", b"\x95", "�".encode(), "�".encode(), 32) == "bad_bytes_in"

@@ -1,57 +1,276 @@
 #!/usr/bin/env python3
-"""Run the stitched KE2 experiment for P = 32 and P = 64.
+"""Run the KE2 experiment for P = 32 and P = 64 and write one summary.
 
-Steps: build the decode and raw byte tables (build_tables.py), check Lemma 1, Lemma 2 and
-Theorem 1 on the real tokenizer (proofs/proof_checks.py), check CPU decoding determinism in
-three fresh processes (determinism/tokenizer_decode_cpu.py) and, when MPS is available, the
-MPS forward-codec experiment (determinism/codec_mps.py). Outputs go to teams/04-ke2/results/.
+Steps (each can be skipped with ``--skip``):
+
+``tables``           decode and raw byte tables, every P                         (build_tables.py)
+``proofs``           Lemma 1, Lemma 2 and Theorem 1 on the real tokenizer          (proofs/proof_checks.py)
+``cpu_determinism``  tokenizer decoding in three fresh CPU processes             (determinism/tokenizer_decode_cpu.py)
+``mps``              forward codec on MPS vs CPU, three fresh processes, if MPS  (determinism/codec_mps.py)
+
+Then ``results/experiment/summary.json`` and ``experiment.md`` (team folder) are written from the
+step outputs. Steps that start fresh processes run as subprocesses, so one step cannot leak state
+into another.
+
+Usage
+-----
+    python src/run_experiment.py [--tokenizer-dir DIR] [--pos-dims 32 64] [--skip mps ...]
 """
 
 from __future__ import annotations
 
 import argparse
+import json
+import logging
 import subprocess
 import sys
+import time
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 
-SRC = Path(__file__).resolve().parent
-RESULTS = SRC.parent / "results"
-TOKENIZER_SHA256 = "01d968a7970b029c071b29f060abf6104b66168dedf2ff3b1a0290a545739fff"
+if __package__ in (None, ""):  # run as a script: make ke2 and the upstream codec importable
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from ke2.upstream import ensure_kronecker_embeddings
+
+    ensure_kronecker_embeddings()
+
+from ke2.config import POS_DIMS, SRC_DIR, TEAM_DIR, TOKENIZER_SHA256
+from ke2.tables import KINDS
+from ke2.tokenizer import resolve_tokenizer_path
+from ke2.upstream import ensure_kronecker_embeddings
+
+log = logging.getLogger("run_experiment")
+
+STEPS = ("tables", "proofs", "cpu_determinism", "mps")
 
 
-def step(name: str, cmd: list[str]) -> None:
-    print(f"== {name}: {' '.join(cmd[1:])}", flush=True)
-    subprocess.run(cmd, check=True)
+@dataclass(frozen=True)
+class Context:
+    tokenizer_dir: Path
+    pos_dims: tuple[int, ...]
+    results: Path
+    sample: int
+    seed: int
+
+    @property
+    def tables_dir(self) -> Path:
+        return self.results / "tables"
 
 
-def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--tokenizer-dir", required=True, type=Path,
-                    help="folder with tokenizer.json and special_tokens_map.json")
-    ap.add_argument("--pos-dims", type=int, nargs="+", default=[32, 64])
-    ap.add_argument("--skip-mps", action="store_true")
-    a = ap.parse_args(argv)
-    py, tok = sys.executable, a.tokenizer_dir.resolve()
+def _run(cmd: Sequence[str | Path]) -> subprocess.CompletedProcess:
+    """Run a command (fails on a non-zero exit); log it with absolute paths shortened to file names."""
+    args = [str(c) for c in cmd]
+    log.info("$ %s", " ".join(Path(a).name if Path(a).is_absolute() else a for a in args[1:]))
+    return subprocess.run(args, check=True, capture_output=True, text=True)
 
-    step("tables", [py, str(SRC / "build_tables.py"), "--tokenizer", str(tok / "tokenizer.json"),
-                    "--out", str(RESULTS / "tables"), "--pos-dims", *map(str, a.pos_dims)])
-    step("proof checks", [py, str(SRC / "proofs" / "proof_checks.py"), str(tok),
-                          str(RESULTS / "proof_checks.json")])
-    step("cpu decode determinism", [py, str(SRC / "determinism" / "tokenizer_decode_cpu.py"),
-                                    "--tokenizer", str(tok / "tokenizer.json"),
-                                    "--expected-sha256", TOKENIZER_SHA256, "--out", str(RESULTS)])
-    if not a.skip_mps:
-        import torch
 
-        if torch.backends.mps.is_available():
-            import kronecker_embeddings
+def _write_json(path: Path, data: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
 
-            codec_src = Path(kronecker_embeddings.__file__).resolve().parents[1]
-            step("mps codec", [py, str(SRC / "determinism" / "codec_mps.py"), "--tables", str(RESULTS / "tables"),
-                               "--codec-src", str(codec_src), "--out", str(RESULTS)])
+
+def _read_json(path: Path) -> dict | None:
+    return json.loads(path.read_text(encoding="utf-8")) if path.is_file() else None
+
+
+# --------------------------------------------------------------------------- #
+# Steps
+# --------------------------------------------------------------------------- #
+def step_tables(ctx: Context) -> None:
+    _run([sys.executable, SRC_DIR / "build_tables.py", "--tokenizer", ctx.tokenizer_dir / "tokenizer.json",
+          "--out", ctx.tables_dir, "--pos-dims", *map(str, ctx.pos_dims)])  # fmt: skip
+
+
+def step_proofs(ctx: Context) -> None:
+    _run([sys.executable, SRC_DIR / "proofs" / "proof_checks.py", ctx.tokenizer_dir, ctx.results / "proof_checks.json"])
+
+
+def step_cpu_determinism(ctx: Context) -> None:
+    _run([sys.executable, SRC_DIR / "determinism" / "tokenizer_decode_cpu.py", "--tokenizer",
+          ctx.tokenizer_dir / "tokenizer.json", "--expected-sha256", TOKENIZER_SHA256, "--out", ctx.results])  # fmt: skip
+
+
+def step_mps(ctx: Context) -> None:
+    import torch
+
+    if not torch.backends.mps.is_available():
+        log.warning("mps: skipped (MPS not available on this machine)")
+        return
+    _run([sys.executable, SRC_DIR / "determinism" / "codec_mps.py", "--tables", ctx.tables_dir,
+          "--codec-src", ensure_kronecker_embeddings(), "--out", ctx.results])  # fmt: skip
+
+
+STEP_FUNCS: dict[str, Callable[[Context], None]] = {
+    "tables": step_tables,
+    "proofs": step_proofs,
+    "cpu_determinism": step_cpu_determinism,
+    "mps": step_mps,
+}
+
+
+# --------------------------------------------------------------------------- #
+# Summary
+# --------------------------------------------------------------------------- #
+def summarize(ctx: Context) -> dict:
+    """Collect the step outputs into one record per P."""
+    manifest = _read_json(ctx.tables_dir / "manifest.json") or {}
+    proofs = _read_json(ctx.results / "proof_checks.json") or {}
+    decoded = (_read_json(ctx.results / "decode_ref" / "summary.json") or {}).get("runs", {})
+    cpu = _read_json(ctx.results / "decode_cpu_metadata.json") or {}
+    mps = (_read_json(ctx.results / "codec_mps_results.json") or {}).get("summary", {})
+    per_p = {}
+    for P in ctx.pos_dims:
+        entry: dict = {"D": 256 * P}
+        for kind in KINDS:
+            t = manifest.get("tables", {}).get(f"{kind}_table_P{P}.npz", {})
+            pr = proofs.get(f"P{P}_{kind}", {})
+            entry[kind] = {
+                "table_sha256": t.get("sha256"),
+                "unique_rows": t.get("n_unique_rows"),
+                "colliding_tokens": t.get("n_colliding_tokens"),
+                "fffd_rows": t.get("n_rows_containing_U+FFFD"),
+                "truncated": t.get("n_truncated"),
+                "theorem1_partitions_equal": all(pr.get(d, {}).get("partitions_equal") for d in ("float32", "bfloat16"))
+                if pr
+                else None,
+                "distinct_codes_fp32": pr.get("float32", {}).get("distinct_codes"),
+                "collision_groups": pr.get("groups"),
+                "pair_causes": pr.get("pair_causes"),
+                "decode_ref": decoded.get(f"{kind}_P{P}"),
+            }
+        entry["bf16_min_gap"] = proofs.get(f"P{P}_bf16_min_gap")
+        entry["mps"] = mps.get(str(P))
+        per_p[str(P)] = entry
+    runs = cpu.get("runs", [])
+    return {
+        "tokenizer_sha256": manifest.get("tokenizer", {}).get("sha256"),
+        "vocab_size": manifest.get("tokenizer", {}).get("vocab_size"),
+        "max_raw_byte_length": manifest.get("max_raw_byte_length"),
+        "cpu_decode_determinism": {
+            "all_match": cpu.get("all_match"),
+            "sha256": runs[0]["sha256"] if runs else None,
+            "runs": len(runs),
+        },
+        "per_pos_dim": per_p,
+    }
+
+
+def _fmt(value) -> str:
+    if value is None:
+        return "–"
+    if isinstance(value, bool):
+        return "yes" if value else "**no**"
+    if isinstance(value, float):
+        return f"{value:.4g}"
+    if isinstance(value, int):
+        return f"{value:,}"
+    return str(value)
+
+
+def render_markdown(summary: dict, pos_dims: Sequence[int]) -> str:
+    """The P = 32 vs P = 64 comparison as a Markdown page."""
+    cols = [f"P={P} {kind}" for P in pos_dims for kind in KINDS]
+    cells = [(str(P), kind) for P in pos_dims for kind in KINDS]
+
+    def row(label: str, get) -> str:
+        values = []
+        for P, kind in cells:
+            try:
+                values.append(_fmt(get(summary["per_pos_dim"][P], kind)))
+            except (KeyError, TypeError):
+                values.append("–")
+        return f"| {label} | " + " | ".join(values) + " |"
+
+    def dr(field):
+        return lambda e, k: (e[k]["decode_ref"] or {})[field]
+
+    lines = [
+        "# KE2 experiment: P = 32 vs P = 64",
+        "",
+        "Generated by `python src/run_experiment.py` from the files under `results/`. Do not edit by hand.",
+        "",
+        f"Tokenizer: BrahmicTokenizer-131K, `tokenizer.json` SHA-256 `{summary['tokenizer_sha256']}`, "
+        f"V = {_fmt(summary['vocab_size'])}, longest token {summary['max_raw_byte_length']} bytes.",
+        "",
+        "## Tables, Theorem 1 and the reference decoder",
+        "",
+        "| | " + " | ".join(cols) + " |",
+        "|---|" + "---|" * len(cols),
+        row("code dimension D", lambda e, k: e["D"]),
+        row("unique rows", lambda e, k: e[k]["unique_rows"]),
+        row("colliding tokens (V − unique)", lambda e, k: e[k]["colliding_tokens"]),
+        row("rows containing U+FFFD", lambda e, k: e[k]["fffd_rows"]),
+        row("tokens truncated", lambda e, k: e[k]["truncated"]),
+        row("distinct codes (fp32)", lambda e, k: e[k]["distinct_codes_fp32"]),
+        row("collision groups", lambda e, k: e[k]["collision_groups"]),
+        row("Theorem 1: code groups = cut-string groups (fp32, bf16)", lambda e, k: e[k]["theorem1_partitions_equal"]),
+        row("decode_ref: IDs recovered", lambda e, k: f"{dr('ids_recovered')(e, k):,} / {dr('vectors')(e, k):,}"),
+        row("decode_ref: bytes recovered", lambda e, k: f"{dr('bytes_recovered')(e, k):,} / {dr('vectors')(e, k):,}"),
+        row("decode_ref: ties (margin 0)", dr("ties")),
+        row("decode_ref: min margin (cosine)", dr("min_margin")),
+        row("decode_ref: median margin", dr("median_margin")),
+        row("decode_ref: same hash in a fresh process", dr("fresh_process_sha256_equal")),
+        "",
+        "Decode-table ties are the known U+FFFD issue: partial-character tokens share one row, so the",
+        "decoder returns the lowest ID of the group (its bytes are still right: they are U+FFFD for all of them).",
+        "",
+        "## Determinism",
+        "",
+    ]
+    cpu = summary["cpu_decode_determinism"]
+    lines.append(
+        f"- CPU tokenizer decoding, {cpu['runs']} fresh processes: all match = {_fmt(cpu['all_match'])}, "
+        f"SHA-256 `{cpu['sha256']}`."
+    )
+    for P in pos_dims:
+        m = summary["per_pos_dim"][str(P)].get("mps")
+        if m:
+            lines.append(
+                f"- MPS forward codec, P={P}: three MPS hashes match = {_fmt(m['mps_three_hashes_match'])}, "
+                f"CPU vs MPS within tolerance = {_fmt(m['cpu_mps_all_close'])}, "
+                f"max abs difference {_fmt(m['max_absolute_difference'])} (bitwise equal: {_fmt(m['cpu_mps_bitwise_equal'])})."
+            )
         else:
-            print("== mps codec: skipped (MPS not available)")
-    print("ALL STEPS PASSED")
+            lines.append(f"- MPS forward codec, P={P}: not run.")
+    for P in pos_dims:
+        r = (summary["per_pos_dim"][str(P)]["raw"] or {}).get("decode_ref")
+        if r:
+            lines.append(f"- decode_ref hash, raw table, P={P}: `{r['sha256']}`.")
+    lines.append("")
+    return "\n".join(lines)
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--tokenizer-dir", type=Path, help="folder with tokenizer.json and special_tokens_map.json")
+    ap.add_argument("--pos-dims", type=int, nargs="+", default=list(POS_DIMS))
+    ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--results", type=Path, default=TEAM_DIR / "results")
+    ap.add_argument("--skip", nargs="*", default=[], choices=STEPS)
+    ap.add_argument("--summary-md", type=Path, default=TEAM_DIR / "experiment.md")
+    a = ap.parse_args(argv)
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s", datefmt="%H:%M:%S")
+
+    tokenizer_dir = (a.tokenizer_dir or resolve_tokenizer_path().parent).resolve()
+    ctx = Context(tokenizer_dir, tuple(a.pos_dims), a.results.resolve(), 0, a.seed)
+    for name in STEPS:
+        if name in a.skip:
+            log.info("== %s: skipped", name)
+            continue
+        log.info("== %s", name)
+        start = time.perf_counter()
+        try:
+            STEP_FUNCS[name](ctx)
+        except subprocess.CalledProcessError as e:
+            log.error("step %s failed:\n%s", name, (e.stderr or e.stdout or "").strip())
+            return 1
+        log.info("== %s done in %.0fs", name, time.perf_counter() - start)
+
+    summary = summarize(ctx)
+    _write_json(ctx.results / "experiment" / "summary.json", summary)
+    a.summary_md.write_text(render_markdown(summary, ctx.pos_dims), encoding="utf-8")
+    log.info("wrote %s and %s", ctx.results / "experiment" / "summary.json", a.summary_md.name)
     return 0
 
 

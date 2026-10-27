@@ -14,6 +14,7 @@ Needs torch, tokenizers and kronecker-embeddings. The tokenizer files are never 
 
 from __future__ import annotations
 
+import argparse
 import hashlib
 import json
 import sys
@@ -21,22 +22,25 @@ from collections import Counter, defaultdict
 from itertools import combinations
 from pathlib import Path
 
+if __package__ in (None, ""):  # run as a script: make ke2 and the upstream codec importable
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from ke2.upstream import ensure_kronecker_embeddings
+
+    ensure_kronecker_embeddings()
+
 import torch
-from forward import code_digest, codes, pair_cause, truncate
 from tokenizers import Tokenizer
 
-DEFAULT_OUT = Path(__file__).resolve().parents[2] / "results" / "proof_checks.json"
+from forward import code_digest, codes, pair_cause, truncate
+from ke2.config import RESULTS_DIR
+from ke2.tokenizer import BYTE_TO_UNI
+
+DEFAULT_OUT = RESULTS_DIR / "proof_checks.json"
 
 
 def bytes_to_unicode() -> dict[int, str]:
-    bs = list(range(33, 127)) + list(range(161, 173)) + list(range(174, 256))
-    cs, n = bs[:], 0
-    for b in range(256):
-        if b not in bs:
-            bs.append(b)
-            cs.append(256 + n)
-            n += 1
-    return dict(zip(bs, map(chr, cs)))
+    """The GPT-2 byte -> character map (shared with the table builder)."""
+    return dict(BYTE_TO_UNI)
 
 
 def is_utf8(b: bytes) -> bool:
@@ -63,7 +67,7 @@ def load_tables(tok_dir: Path) -> tuple[list[bytes], list[bytes], dict]:
     smap = json.loads((tok_dir / "special_tokens_map.json").read_text(encoding="utf-8"))
 
     class Adapter:  # the members of a transformers tokenizer that token_id_to_bytes uses
-        all_special_ids = [vocab[t] for t in smap.values() if isinstance(t, str)]
+        all_special_ids = [vocab[t] for t in smap.values() if isinstance(t, str)]  # noqa: RUF012
 
         def convert_ids_to_tokens(self, i):
             return tk.id_to_token(i)
@@ -98,7 +102,7 @@ def check_table(raw: list[bytes], fed: list[bytes], P: int) -> dict:
     cuts = [truncate(f, P) for f in fed]
     out: dict = {
         "longer_than_P": sum(1 for f in fed if len(f) > P),
-        "cut_to_empty": sum(1 for f, c in zip(fed, cuts) if f and not c),
+        "cut_to_empty": sum(1 for f, c in zip(fed, cuts, strict=True) if f and not c),
     }
     for dtype in (torch.float32, torch.bfloat16):
         by_code = defaultdict(list)
@@ -136,7 +140,7 @@ def bf16_min_gap(P: int) -> float:
 
 def run(tok_dir: Path) -> dict:
     raw, fed, info = load_tables(tok_dir)
-    info["fed_equals_raw"] = sum(1 for r, f in zip(raw, fed) if r == f)
+    info["fed_equals_raw"] = sum(1 for r, f in zip(raw, fed, strict=True) if r == f)
     for P in (32, 64):
         info[f"P{P}_bf16_min_gap"] = bf16_min_gap(P)
         info[f"P{P}_raw"] = check_table(raw, raw, P)
@@ -144,19 +148,28 @@ def run(tok_dir: Path) -> dict:
     return info
 
 
-if __name__ == "__main__":
+def main(argv: list[str] | None = None) -> int:
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("tokenizer_dir", type=Path, help="folder with tokenizer.json and special_tokens_map.json")
+    ap.add_argument("out", type=Path, nargs="?", default=DEFAULT_OUT, help="output JSON file")
+    a = ap.parse_args(argv)
+
     import kronecker_embeddings
     import tokenizers
 
-    res = run(Path(sys.argv[1]))
+    res = run(a.tokenizer_dir)
     res["env"] = {
         "torch": torch.__version__,
         "tokenizers": tokenizers.__version__,
         "kronecker_embeddings": kronecker_embeddings.__version__,
     }
-    out = Path(sys.argv[2]) if len(sys.argv) > 2 else DEFAULT_OUT
-    out.parent.mkdir(parents=True, exist_ok=True)
+    a.out.parent.mkdir(parents=True, exist_ok=True)
     text = json.dumps(res, indent=2)
-    out.write_text(text + "\n", encoding="utf-8", newline="\n")
+    a.out.write_text(text + "\n", encoding="utf-8", newline="\n")
     print(text)
-    print(f"written to {out}")
+    print(f"written to {a.out}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

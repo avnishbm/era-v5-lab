@@ -73,7 +73,11 @@ def test_three_fresh_processes_and_cli_outputs(tmp_path):
     assert len(runs) == 3 and runs[0]["token_count"] == 4
     assert runs[0]["sha256"] == dc.hash_rows([(0, b"[UNK]"), (1, b"hello"), (2, "क".encode()), (3, b"<s>")])
     output = tmp_path / "results"
-    result = dc.subprocess.run([sys.executable, str(SCRIPT), "--tokenizer", str(path), "--expected-sha256", expected, "--out", str(output)], capture_output=True, text=True)
+    result = dc.subprocess.run(
+        [sys.executable, str(SCRIPT), "--tokenizer", str(path), "--expected-sha256", expected, "--out", str(output)],
+        capture_output=True,
+        text=True,
+    )
     assert result.returncode == 0, result.stderr
     assert (output / "decode_cpu_sha256.txt").read_text().splitlines() == [runs[0]["sha256"]] * 3
     metadata = dc.json.loads((output / "decode_cpu_metadata.json").read_text())

@@ -1,78 +1,41 @@
-"""Forward-encode helpers for KE2 week 1.
+"""Forward-encode helpers for the proofs in proof.md (Lemma 1, Lemma 2, Theorem 1).
 
-The codec itself is the one in the public kronecker-embeddings repository
-(kronecker_embeddings.codec.kronecker_codec). This module adds what the proof in
-proof.md needs on top of it:
+The codec is the upstream one (``kronecker_embeddings.codec.kronecker_codec``). This module adds
+what the proof needs on top of it:
 
-  truncate        the cut rule from Lemma 2: the repository rule by default, our proposed variant with rule="proposed"
+  truncate        the cut rule from Lemma 2: the repository rule by default, the proposed variant with rule="proposed"
   codes           codes for a list of byte strings, using the repository codec
   read_support    reads the bytes back from a code (the argument of Lemma 1)
   expected_values closed-form high and low value of a code (Lemma 1)
   pair_cause      names why two tokens share a code (corollary of Theorem 1)
 
-The kronecker-embeddings package is found in this order: already installed, the KRONECKER_SRC
-environment variable (path to the repository's src folder), a sibling folder named kronecker-embeddings
-next to the lab repository.
+Needs the ``ke2`` package (teams/04-ke2/src) and ``kronecker_embeddings`` on the import path; the
+entry points and tests/conftest.py arrange both (see ``ke2.upstream``).
 """
 
 from __future__ import annotations
 
 import hashlib
-import os
-import sys
-from pathlib import Path
-
-try:
-    import kronecker_embeddings  # noqa: F401
-except ImportError:
-    candidates = [os.environ.get("KRONECKER_SRC"), Path(__file__).resolve().parents[4].parent / "kronecker-embeddings" / "src"]
-    for c in candidates:
-        if c and (Path(c) / "kronecker_embeddings").is_dir():
-            sys.path.insert(0, str(c))
-            break
-    else:
-        raise ImportError(
-            "kronecker_embeddings not found. Clone https://github.com/theschoolofai/kronecker-embeddings "
-            "and either pip install it or set KRONECKER_SRC to its src folder."
-        )
 
 import torch
 from kronecker_embeddings.codec import kronecker_codec
-from kronecker_embeddings.tokenizer_utils import utf8_safe_truncate
+
+from ke2.codec import code_values
+from ke2.codec import read_support as _read_support
+from ke2.truncation import proposed_truncate, repo_truncate
 
 EPS = 1e-6  # the repository default for the z-norm denominator
 CAUSES = ("empty", "cut_to_empty", "same_raw", "bad_bytes_in", "truncation")
-
-
-def repo_truncate(raw: bytes, P: int) -> bytes:
-    """The repository rule (utf8_safe_truncate): the first of the prefixes of length P, P-1, P-2, P-3
-    that is valid UTF-8, else b"". A token longer than P that has no such prefix (for example one
-    that starts with a stray tail byte) becomes b"" and gets the all-zero code."""
-    return utf8_safe_truncate(raw, P)
-
-
-def proposed_truncate(raw: bytes, P: int) -> bytes:
-    """Our proposed fix: cut to at most P bytes without splitting a UTF-8 letter, but keep the bytes.
-
-    Try the cut positions P, P-1, P-2, P-3 in that order. Take the first one where the
-    byte at the cut is not a continuation byte (0x80-0xBF), and keep everything before it.
-    If none of the four works (a run of stray continuation bytes), cut at exactly P.
-    It never asks whether the prefix is valid UTF-8, so a non-empty token is never cut to nothing.
-    Equal to the repository rule on valid UTF-8.
-    """
-    if len(raw) <= P:
-        return raw
-    for c in range(P, max(P - 4, 0), -1):
-        if (raw[c] & 0xC0) != 0x80:
-            return raw[:c]
-    return raw[:P]
-
-
 RULES = {"repo": repo_truncate, "proposed": proposed_truncate}
+
+__all__ = [
+    "CAUSES", "EPS", "RULES", "code_digest", "codes", "decode_style_bytes", "expected_values", "pair_cause",
+    "proposed_truncate", "read_support", "repo_truncate", "truncate",
+]  # fmt: skip
 
 
 def truncate(raw: bytes, P: int, rule: str = "repo") -> bytes:
-    """The cut used by the proof. The default is the repository rule; rule="proposed" is our variant."""
+    """The cut used by the proof. The default is the repository rule; rule="proposed" is the variant."""
     return RULES[rule](raw, P)
 
 
@@ -100,28 +63,13 @@ def read_support(code: torch.Tensor, P: int) -> bytes:
     Cell i of the flattened (256, P) grid is byte i // P at position i % P.
     Raises ValueError if the lit cells are not exactly one per position 0..L-1.
     """
-    z = code.float()
-    hi, lo = z.max(), z.min()
-    if hi == lo:  # the all-zero code of the empty string
-        return b""
-    lit = (z > (hi + lo) / 2).nonzero().flatten().tolist()
-    by_pos: dict[int, int] = {}
-    for i in lit:
-        p = i % P
-        if p in by_pos:
-            raise ValueError(f"two lit cells at position {p}")
-        by_pos[p] = i // P
-    if sorted(by_pos) != list(range(len(by_pos))):
-        raise ValueError("lit positions are not 0..L-1")
-    return bytes(by_pos[p] for p in range(len(by_pos)))
+    return _read_support(code, P)
 
 
 def expected_values(L: int, P: int, eps: float = EPS) -> tuple[float, float]:
     """(high, low): the two values of the code of a string with L bytes (1 <= L <= P)."""
-    D = 256 * P
-    m = L**0.5 / D
-    sd = (((1 - L / D) / (D - 1)) ** 0.5) + eps
-    return (1 / L**0.5 - m) / sd, -m / sd
+    high, low = code_values(L, P, eps=eps)
+    return float(high), float(low)
 
 
 def decode_style_bytes(raw: bytes) -> bytes:

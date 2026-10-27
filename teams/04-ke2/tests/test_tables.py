@@ -14,10 +14,10 @@ def test_shapes_and_dtypes(tables, kind, P):
     t = tables[kind, P]
     assert t.bytes.shape == (V, P) and t.bytes.dtype == np.uint8
     assert t.lengths.shape == (V,) and t.lengths.dtype == np.int16
-    assert 0 <= int(t.lengths.min()) and int(t.lengths.max()) <= P
+    assert int(t.lengths.min()) >= 0 and int(t.lengths.max()) <= P
     # padding beyond the length is zero
     for i in (0, 77, 66526, V - 1):
-        assert not t.bytes[i, int(t.lengths[i]):].any()
+        assert not t.bytes[i, int(t.lengths[i]) :].any()
 
 
 def test_no_truncation_on_this_tokenizer(tables, tb):

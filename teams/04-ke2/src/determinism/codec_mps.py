@@ -12,8 +12,13 @@ import subprocess
 import sys
 from pathlib import Path
 
-TEAM_DIR = Path(__file__).resolve().parents[2]
-TOKENIZER_SHA = "01d968a7970b029c071b29f060abf6104b66168dedf2ff3b1a0290a545739fff"
+if __package__ in (None, ""):  # run as a script: make the ke2 package importable
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from ke2.config import TEAM_DIR
+from ke2.config import TOKENIZER_SHA256 as TOKENIZER_SHA
+from ke2.tables import TABLE_FORMAT_VERSION, table_content_sha256
+
 HASH_FORMAT = "ke2-codec-float32-v1"
 
 
@@ -21,8 +26,8 @@ def read_table(path, P, tokenizer_sha):
     import numpy as np
 
     with np.load(path, allow_pickle=False) as z:
-        if int(z["format_version"]) != 2 or str(z["kind"]) != "raw" or int(z["pos_dim"]) != P:
-            raise ValueError("Expected a v2 raw byte table with matching P")
+        if int(z["format_version"]) != TABLE_FORMAT_VERSION or str(z["kind"]) != "raw" or int(z["pos_dim"]) != P:
+            raise ValueError(f"Expected a v{TABLE_FORMAT_VERSION} raw byte table with matching P")
         if str(z["tokenizer_sha256"]) != tokenizer_sha:
             raise ValueError("Table belongs to a different tokenizer")
         buf, lengths = z["bytes"], z["lengths"]
@@ -32,18 +37,22 @@ def read_table(path, P, tokenizer_sha):
             raise ValueError("Invalid byte/length shapes")
         if not len(lengths) or (lengths < 0).any() or (lengths > P).any():
             raise ValueError("Invalid table lengths")
-        h = hashlib.sha256(f"ke2-table-v2|raw|{P}|".encode())
-        h.update(np.ascontiguousarray(buf).tobytes())
-        h.update(np.ascontiguousarray(lengths).tobytes())
-        if h.hexdigest() != str(z["table_sha256"]):
+        digest = table_content_sha256("raw", P, buf, lengths)
+        if digest != str(z["table_sha256"]):
             raise ValueError("Table content hash mismatch")
-        return buf, lengths, h.hexdigest()
+        return buf, lengths, digest
 
 
 def output_digest(P, count):
     # Identical headers on CPU and MPS permit a direct bitwise comparison.
-    header = {"format": HASH_FORMAT, "P": P, "rows": count, "columns": 256 * P,
-              "dtype": "little-endian float32", "order": "ascending token ID, row-major"}
+    header = {
+        "format": HASH_FORMAT,
+        "P": P,
+        "rows": count,
+        "columns": 256 * P,
+        "dtype": "little-endian float32",
+        "order": "ascending token ID, row-major",
+    }
     return hashlib.sha256((json.dumps(header, sort_keys=True) + "\n").encode())
 
 
@@ -88,14 +97,23 @@ def measure(args):
         raise RuntimeError("Imported codec does not match --codec-src")
     torch.set_num_threads(1)
     torch.use_deterministic_algorithms(False)
-    result = {"environment": {
-        "torch_version": torch.__version__, "numpy_version": np.__version__,
-        "python_version": platform.python_version(), "macos_version": platform.mac_ver()[0],
-        "machine": platform.machine(), "device": "mps", "dtype": "float32",
-        "cpu_threads": 1, "cpu_fallback": False, "mps_fast_math": False,
-        "tokenizer_sha256": args.expected_tokenizer_sha256,
-        "codec_source_sha256": hashlib.sha256(codec_file.read_bytes()).hexdigest(),
-    }, "tables": {}}
+    result = {
+        "environment": {
+            "torch_version": torch.__version__,
+            "numpy_version": np.__version__,
+            "python_version": platform.python_version(),
+            "macos_version": platform.mac_ver()[0],
+            "machine": platform.machine(),
+            "device": "mps",
+            "dtype": "float32",
+            "cpu_threads": 1,
+            "cpu_fallback": False,
+            "mps_fast_math": False,
+            "tokenizer_sha256": args.expected_tokenizer_sha256,
+            "codec_source_sha256": hashlib.sha256(codec_file.read_bytes()).hexdigest(),
+        },
+        "tables": {},
+    }
     with torch.inference_mode():
         for P in (32, 64):
             buf, lengths, table_sha = read_table(args.tables / f"raw_table_P{P}.npz", P, args.expected_tokenizer_sha256)
@@ -129,8 +147,11 @@ def measure(args):
             torch.use_deterministic_algorithms(True)
             try:
                 probe_n = min(8, count)
-                probe = codec.kronecker_codec(torch.from_numpy(buf[:probe_n]).to("mps"),
-                                             torch.from_numpy(lengths[:probe_n].astype(np.int64)).to("mps"), pos_dim=P)
+                probe = codec.kronecker_codec(
+                    torch.from_numpy(buf[:probe_n]).to("mps"),
+                    torch.from_numpy(lengths[:probe_n].astype(np.int64)).to("mps"),
+                    pos_dim=P,
+                )
                 torch.mps.synchronize()
                 strict = {"status": "accepted_for_probe", "rows": probe_n}
                 del probe
@@ -142,11 +163,18 @@ def measure(args):
             finally:
                 torch.use_deterministic_algorithms(False)
             result["tables"][str(P)] = {
-                "table_sha256": table_sha, "vocabulary_size": len(lengths), "rows": count,
-                "first_id": 0, "last_id": count - 1, "batch_size": args.batch_size,
-                "cpu_sha256": cpu_hash.hexdigest(), "mps_sha256": mps_hash.hexdigest(),
-                "bitwise_different_values": differing_values, "bitwise_different_rows": differing_rows,
-                "max_absolute_difference": max_error, "values_outside_tolerance": outside_tolerance,
+                "table_sha256": table_sha,
+                "vocabulary_size": len(lengths),
+                "rows": count,
+                "first_id": 0,
+                "last_id": count - 1,
+                "batch_size": args.batch_size,
+                "cpu_sha256": cpu_hash.hexdigest(),
+                "mps_sha256": mps_hash.hexdigest(),
+                "bitwise_different_values": differing_values,
+                "bitwise_different_rows": differing_rows,
+                "max_absolute_difference": max_error,
+                "values_outside_tolerance": outside_tolerance,
                 "strict_probe": strict,
             }
     return result
@@ -169,9 +197,23 @@ def main(argv=None):
     if args.worker:
         print(json.dumps(measure(args), sort_keys=True))
         return 0
-    command = [sys.executable, str(Path(__file__).resolve()), "--worker", "--tables", str(args.tables.resolve()),
-               "--codec-src", str(args.codec_src.resolve()), "--expected-tokenizer-sha256", args.expected_tokenizer_sha256,
-               "--batch-size", str(args.batch_size), "--rtol", str(args.rtol), "--atol", str(args.atol)]
+    command = [
+        sys.executable,
+        str(Path(__file__).resolve()),
+        "--worker",
+        "--tables",
+        str(args.tables.resolve()),
+        "--codec-src",
+        str(args.codec_src.resolve()),
+        "--expected-tokenizer-sha256",
+        args.expected_tokenizer_sha256,
+        "--batch-size",
+        str(args.batch_size),
+        "--rtol",
+        str(args.rtol),
+        "--atol",
+        str(args.atol),
+    ]
     if args.limit is not None:
         command += ["--limit", str(args.limit)]
     env = dict(os.environ, PYTORCH_ENABLE_MPS_FALLBACK="0", PYTORCH_MPS_FAST_MATH="0", PYTHONDONTWRITEBYTECODE="1")
@@ -183,12 +225,15 @@ def main(argv=None):
         runs.append(json.loads(process.stdout))
         print(f"Completed fresh MPS process {index + 1}/3", flush=True)
     summary = summarize(runs)
-    report = {"hash_format": HASH_FORMAT,
-              "hash_serialization": "sorted JSON header plus LF; then all output values as row-major little-endian float32",
-              "scope": "raw-table forward codec, three fresh processes, fixed ascending order and batch size; no learned projection",
-              "measurement_mode": "strict deterministic algorithms disabled; CPU fallback and MPS fast math disabled",
-              "comparison": {"rtol": args.rtol, "atol": args.atol},
-              "summary": summary, "runs": runs}
+    report = {
+        "hash_format": HASH_FORMAT,
+        "hash_serialization": "sorted JSON header plus LF; then all output values as row-major little-endian float32",
+        "scope": "raw-table forward codec, three fresh processes, fixed ascending order and batch size; no learned projection",
+        "measurement_mode": "strict deterministic algorithms disabled; CPU fallback and MPS fast math disabled",
+        "comparison": {"rtol": args.rtol, "atol": args.atol},
+        "summary": summary,
+        "runs": runs,
+    }
     args.out.mkdir(parents=True, exist_ok=True)
     (args.out / "codec_mps_results.json").write_text(json.dumps(report, indent=2) + "\n")
     lines = ["# P run MPS_SHA256 CPU_SHA256\n"]
@@ -198,7 +243,14 @@ def main(argv=None):
             lines.append(f"{P} {index} {entry['mps_sha256']} {entry['cpu_sha256']}\n")
     (args.out / "codec_mps_sha256.txt").write_text("".join(lines))
     print(json.dumps(summary, indent=2))
-    return 0 if all(s["mps_three_hashes_match"] and s["cpu_three_hashes_match"] and s["cpu_mps_all_close"] for s in summary.values()) else 1
+    return (
+        0
+        if all(
+            s["mps_three_hashes_match"] and s["cpu_three_hashes_match"] and s["cpu_mps_all_close"]
+            for s in summary.values()
+        )
+        else 1
+    )
 
 
 if __name__ == "__main__":

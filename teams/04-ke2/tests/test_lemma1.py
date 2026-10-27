@@ -4,6 +4,7 @@ import math
 import random
 
 import torch
+
 from forward import code_digest, codes, expected_values, read_support
 
 PS = (32, 64)
@@ -50,7 +51,7 @@ def test_bytes_read_back_from_the_code_edge_strings_and_random():
         strings += [rand_bytes(rng, rng.randrange(1, P + 1)) for _ in range(3000)]
         for dtype in DTYPES:
             batch = codes(strings, P, dtype)
-            for s, z in zip(strings, batch):
+            for s, z in zip(strings, batch, strict=True):
                 assert read_support(z, P) == s, (P, dtype, s)
 
 
@@ -74,14 +75,14 @@ def test_distinct_strings_give_distinct_codes():
             pool.add(s)
             if len(s) >= 2:  # near neighbours: one byte changed, two bytes swapped, one byte added
                 i = rng.randrange(len(s))
-                pool.add(s[:i] + bytes([(s[i] + 1) % 256]) + s[i + 1:])
+                pool.add(s[:i] + bytes([(s[i] + 1) % 256]) + s[i + 1 :])
                 j = rng.randrange(len(s) - 1)
-                pool.add(s[:j] + s[j + 1:j + 2] + s[j:j + 1] + s[j + 2:])
+                pool.add(s[:j] + s[j + 1 : j + 2] + s[j : j + 1] + s[j + 2 :])
             if len(s) < P:
                 pool.add(s + bytes([rng.randrange(256)]))
         strings = sorted(pool)
         for dtype in DTYPES:
             digests = set()
             for i in range(0, len(strings), 1000):
-                digests.update(code_digest(z) for z in codes(strings[i:i + 1000], P, dtype))
+                digests.update(code_digest(z) for z in codes(strings[i : i + 1000], P, dtype))
             assert len(digests) == len(strings), (P, dtype, len(digests), len(strings))

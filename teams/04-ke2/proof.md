@@ -193,7 +193,7 @@ export KRONECKER_SRC=<path to kronecker-embeddings>/src
 pytest teams/04-ke2/tests -q
 ```
 
-`forward.py` also finds a folder named `kronecker-embeddings` next to the lab repository.
+`tests/conftest.py` and the scripts also find a folder named `kronecker-embeddings` next to the lab repository (see `src/ke2/upstream.py`).
 
 On the real tokenizer (needs `pip install tokenizers`; download `tokenizer.json`, `tokenizer_config.json` and
 `special_tokens_map.json` from https://huggingface.co/theschoolofai/BrahmicTokenizer-131K into a folder outside this repository):

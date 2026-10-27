@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 
 import pytest
+
 from forward import CAUSES
 
 tok_dir = os.environ.get("BRAHMIC_TOKENIZER_DIR")

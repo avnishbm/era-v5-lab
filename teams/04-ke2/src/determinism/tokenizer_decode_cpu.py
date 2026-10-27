@@ -57,7 +57,8 @@ def decode_once(path, expected_sha256=None):
     ids = check_ids(tokenizer.get_vocab(with_added_tokens=True))
     specials = {
         entry["id"]: entry["content"].encode("utf-8")
-        for entry in config.get("added_tokens", []) if entry.get("special", False)
+        for entry in config.get("added_tokens", [])
+        if entry.get("special", False)
     }
     digest = hash_rows(decoded_rows(tokenizer, ids, specials))
     return {
@@ -99,7 +100,9 @@ def run_three(path, expected_sha256=None):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--tokenizer", required=True, type=Path, help="local tokenizer.json; never downloaded implicitly")
+    parser.add_argument(
+        "--tokenizer", required=True, type=Path, help="local tokenizer.json; never downloaded implicitly"
+    )
     parser.add_argument("--expected-sha256", help="require this exact tokenizer artifact")
     parser.add_argument("--out", type=Path, default=TEAM_DIR / "results")
     parser.add_argument("--worker", action="store_true", help=argparse.SUPPRESS)
