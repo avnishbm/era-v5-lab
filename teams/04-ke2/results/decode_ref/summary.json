@@ -1,0 +1,72 @@
+{
+  "format": "ke2-decode-ref-v1",
+  "encoder": "upstream kronecker_codec, float32, CPU",
+  "decoder": "decode_ref.py, cosine similarity, float64, CPU, exhaustive over the vocabulary",
+  "sample": {
+    "n": 4096,
+    "seed": 0,
+    "edges": "0, 77, 173, V-1, first 8 special IDs"
+  },
+  "runs": {
+    "decode_P32": {
+      "kind": "decode",
+      "pos_dim": 32,
+      "table_sha256": "2fa2ff676680a03d6099b4356415cf3738174fe83e0f4dec28cf915a1856a712",
+      "vectors": 4096,
+      "ids_recovered": 4057,
+      "bytes_recovered": 4096,
+      "ties": 40,
+      "min_margin": 0.0,
+      "median_margin": 0.134027475190044,
+      "min_score": 0.9999999999999993,
+      "sha256": "0cb1b8600baadf19203eab5c47075571677146606ac33c31d42168220f77b02f",
+      "fresh_process_sha256_equal": true,
+      "seconds": 47.1
+    },
+    "raw_P32": {
+      "kind": "raw",
+      "pos_dim": 32,
+      "table_sha256": "b3f5476ec6ae8a6bc3a8ca18e6662d2407645c2ed6f3b3ca4561a9bafd8d04db",
+      "vectors": 4096,
+      "ids_recovered": 4096,
+      "bytes_recovered": 4096,
+      "ties": 0,
+      "min_margin": 0.0318133707027064,
+      "median_margin": 0.134027475190044,
+      "min_score": 0.9999999999999993,
+      "sha256": "5808c83709a71f866ac3703318cf3b45cf5afcf67fc60283786a32942edcbb7c",
+      "fresh_process_sha256_equal": true,
+      "seconds": 41.8
+    },
+    "decode_P64": {
+      "kind": "decode",
+      "pos_dim": 64,
+      "table_sha256": "cd4a8acf4904643d42d630ed159a7199d5322ee115a36f257f5cb7b89de38807",
+      "vectors": 4096,
+      "ids_recovered": 4057,
+      "bytes_recovered": 4096,
+      "ties": 40,
+      "min_margin": 0.0,
+      "median_margin": 0.13400103045709444,
+      "min_score": 0.9999999999999994,
+      "sha256": "64400f5148e32206d1c37bab5522366c433cae7546a71df4ecec2d1d1d653fae",
+      "fresh_process_sha256_equal": true,
+      "seconds": 37.4
+    },
+    "raw_P64": {
+      "kind": "raw",
+      "pos_dim": 64,
+      "table_sha256": "3c7b3eedb78a34f88212906838565e4c920fdbb1eb04f5cf0b28d0f583ea6f5a",
+      "vectors": 4096,
+      "ids_recovered": 4096,
+      "bytes_recovered": 4096,
+      "ties": 0,
+      "min_margin": 0.03178373949508817,
+      "median_margin": 0.13400103045709444,
+      "min_score": 0.9999999999999994,
+      "sha256": "abdab99ba52d7f6b13692b493ddb9d26cc15b19c50fe1b242a2db0efa9495539",
+      "fresh_process_sha256_equal": true,
+      "seconds": 37.8
+    }
+  }
+}

@@ -1,7 +1,7 @@
 {
   "format_version": 2,
   "tokenizer": {
-    "path": "/sessions/inspiring-dazzling-keller/mnt/outputs/teams/04-ke2/data/tokenizer.json",
+    "file": "tokenizer.json",
     "sha256": "01d968a7970b029c071b29f060abf6104b66168dedf2ff3b1a0290a545739fff",
     "vocab_size": 131072,
     "added_tokens": 356,

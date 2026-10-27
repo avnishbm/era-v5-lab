@@ -267,8 +267,9 @@ def render_markdown(summary: dict, pos_dims: Sequence[int]) -> str:
         row("decode_ref: median margin", dr("median_margin")),
         row("decode_ref: same hash in a fresh process", dr("fresh_process_sha256_equal")),
         "",
-        "Decode-table ties are the known U+FFFD issue: partial-character tokens share one row, so the",
-        "decoder returns the lowest ID of the group (its bytes are still right: they are U+FFFD for all of them).",
+        "Decode-table ties are the known issue: partial-character tokens decode to U+FFFD and share rows",
+        "(see collision groups), so the decoder returns the lowest ID of each group. The bytes are still right, because",
+        "every token in a group has the same row. The raw table has no ties, and every ID comes back.",
         "",
         "## Determinism",
         "",
@@ -284,7 +285,7 @@ def render_markdown(summary: dict, pos_dims: Sequence[int]) -> str:
             lines.append(
                 f"- MPS forward codec, P={P}: three MPS hashes match = {_fmt(m['mps_three_hashes_match'])}, "
                 f"CPU vs MPS within tolerance = {_fmt(m['cpu_mps_all_close'])}, "
-                f"max abs difference {_fmt(m['max_absolute_difference'])} (bitwise equal: {_fmt(m['cpu_mps_bitwise_equal'])})."
+                f"max abs difference {_fmt(m['max_absolute_difference'])} (bitwise equal: {'yes' if m['cpu_mps_bitwise_equal'] else 'no, as expected for float32 on MPS'})."
             )
         else:
             lines.append(f"- MPS forward codec, P={P}: not run.")

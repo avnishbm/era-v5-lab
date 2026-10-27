@@ -104,8 +104,8 @@
     }
   },
   "env": {
-    "torch": "2.5.1+cu121",
-    "tokenizers": "0.23.1",
+    "torch": "2.14.1",
+    "tokenizers": "0.23.3",
     "kronecker_embeddings": "0.1.1"
   }
 }
