@@ -1,5 +1,16 @@
 #!/usr/bin/env python3
-"""Decode every vocabulary ID in three fresh CPU processes and compare SHA-256."""
+"""Check tokenizer decoding repeatability in three fresh CPU processes.
+
+Input: a tokenizer.json artifact. Output: hashes of every token ID's decoded
+UTF-8 text. Calls the tokenizer's decode([id]) API independently of embedding
+implementations. Reuse this check for the same artifact; rerun against its new
+expected SHA-256 whenever the tokenizer changes.
+
+A pass establishes tokenizer repeatability, not vector encoding, raw-byte
+preservation or vector-to-token-ID recovery. Results are written to
+tokenizer_decode_cpu_metadata.json and tokenizer_decode_cpu_sha256.txt.
+The v1 suffix in HASH_FORMAT identifies the hash serialization version.
+"""
 
 from __future__ import annotations
 
@@ -122,8 +133,8 @@ def main(argv=None):
         "runs": runs,
     }
     args.out.mkdir(parents=True, exist_ok=True)
-    (args.out / "decode_cpu_sha256.txt").write_text("".join(run["sha256"] + "\n" for run in runs), encoding="ascii")
-    (args.out / "decode_cpu_metadata.json").write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+    (args.out / "tokenizer_decode_cpu_sha256.txt").write_text("".join(run["sha256"] + "\n" for run in runs), encoding="ascii")
+    (args.out / "tokenizer_decode_cpu_metadata.json").write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     print(f"PASS: {runs[0]['token_count']} token IDs decoded in each of three fresh CPU processes")
     print(runs[0]["sha256"])
     return 0

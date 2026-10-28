@@ -1,10 +1,11 @@
 # Tokenizer decoding determinism and optional MPS codec checks
 
 `src/determinism/tokenizer_decode_cpu.py` tests token IDs -> decoded text on CPU.
-`src/determinism/codec_mps.py` tests raw byte tables -> forward KE vectors on MPS,
+`src/determinism/codec_v1_cpu_mps.py` tests raw byte tables -> forward KE vectors on MPS,
 with CPU codec comparisons. Neither is the KE-vector-to-ID reference decoder.
-The required output name `results/decode_cpu_sha256.txt` is retained from the
-week plan; its hashes describe tokenizer decoding.
+The tokenizer outputs use the explicit tokenizer_decode_cpu prefix.
+The original week-plan filename was decode_cpu_sha256.txt; its historical
+contents and hashes are preserved under the clearer name.
 
 This checks that decoding every token ID gives identical results in three fresh
 CPU processes. It uses the Rust `tokenizers` engine through its Python API; no
@@ -48,8 +49,8 @@ The hash begins with ASCII `ke2-decode-cpu-v1` followed by LF. Each record is th
 token ID as four big-endian bytes, the UTF-8 byte length as four big-endian bytes,
 then the UTF-8 bytes. Explicit lengths distinguish different record boundaries.
 
-- `teams/04-ke2/results/decode_cpu_sha256.txt`: three hashes, one per pass.
-- `teams/04-ke2/results/decode_cpu_metadata.json`: artifact identity, versions,
+- `teams/04-ke2/results/tokenizer_decode_cpu_sha256.txt`: three hashes, one per pass.
+- `teams/04-ke2/results/tokenizer_decode_cpu_metadata.json`: artifact identity, versions,
   coverage, settings and matching hashes. No local file paths are recorded.
 
 This hashes decoded token records, rather than `.npz` files, padded table arrays,
@@ -76,7 +77,7 @@ tokenizer, decoder or token policy.
 
 ## Optional MPS codec experiment
 
-The CPU tokenizer-decoding result above stands separately. `codec_mps.py` adds an
+The CPU tokenizer-decoding result above stands separately. `codec_v1_cpu_mps.py` adds an
 optional Apple GPU experiment on the forward codec, after table construction.
 It excludes the learned projection and backward pass.
 
@@ -85,10 +86,10 @@ the v1 codec (reviewed upstream commit
 `d07cb543f03d7a72a7c35bc68cfb795bcb02e1ec`). Keep those inputs outside this PR;
 the results record both table content hashes and the exact codec file SHA-256.
 Install PyTorch and NumPy in addition to the CPU-check requirements. The measured
-versions are recorded in `codec_mps_results.json`.
+versions are recorded in `codec_v1_cpu_mps_results.json`.
 
 ```sh
-python3 teams/04-ke2/src/determinism/codec_mps.py \
+python3 teams/04-ke2/src/determinism/codec_v1_cpu_mps.py \
   --tables /path/to/tables \
   --codec-src /path/to/kronecker-embeddings/src
 ```
@@ -106,7 +107,7 @@ as little-endian float32 in token-ID order. It is independent of batch boundarie
 as a serialization format; computation may still depend on batch size, so the
 measurement records and fixes it across runs.
 
-The JSON and text outputs under `teams/04-ke2/results/codec_mps_*` distinguish:
+The JSON and text outputs under `teams/04-ke2/results/codec_v1_cpu_mps_*` distinguish:
 
 - Three matching MPS hashes: observed repeatability for this fixed environment.
 - CPU/MPS bitwise equality and maximum absolute difference.
@@ -130,10 +131,10 @@ Portable tests run with the normal suite; the MPS integration test is opt-in and
 uses only 16 rows to verify the runner without repeating the full study:
 
 ```sh
-KE2_RUN_MPS_TESTS=1 \
-KE2_MPS_TABLES=/path/to/tables \
-KE2_CODEC_SRC=/path/to/kronecker-embeddings/src \
-python3 -m pytest teams/04-ke2/tests/test_codec_mps.py -q
+KE2_RUN_V1_MPS_TESTS=1 \
+KE2_V1_MPS_TABLES=/path/to/tables \
+KE2_V1_CODEC_SRC=/path/to/kronecker-embeddings/src \
+python3 -m pytest teams/04-ke2/tests/test_codec_v1_cpu_mps.py -q
 ```
 
 PyTorch references:
@@ -145,7 +146,7 @@ PyTorch references:
 Three fresh processes each covered IDs 0 through 131071 at both P values.
 The measured environment was macOS 26.7.1 arm64, PyTorch 2.14.0, NumPy 2.4.4,
 Python 3.14.9; batch size 512 and float32. Input and output hashes are in
-`results/codec_mps_results.json` and `results/codec_mps_sha256.txt`.
+`results/codec_v1_cpu_mps_results.json` and `results/codec_v1_cpu_mps_sha256.txt`.
 
 | P | Matching MPS hashes | Matching CPU hashes | CPU/MPS maximum absolute difference | Values outside tolerance |
 |---|---|---|---|---|

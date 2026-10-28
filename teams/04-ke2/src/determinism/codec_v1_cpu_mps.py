@@ -1,5 +1,15 @@
 #!/usr/bin/env python3
-"""Optional full-vocabulary MPS codec repeatability experiment, separate from CPU decoding."""
+"""Check the original week-1 codec on CPU and MPS, with numerical comparisons.
+
+Imports the public kronecker-embeddings package. Three fresh processes hash CPU
+and MPS forward outputs at P=32/64 and compare their values. Requires MPS; CPU
+is the comparison baseline, so this is not a standalone CPU-only command.
+Uses float32 and excludes learned projection and backward computation.
+
+Results: codec_v1_cpu_mps_results.json and codec_v1_cpu_mps_sha256.txt. Historical
+results retained under these names were renamed without changing their contents.
+Tokenizer decoding is checked independently by tokenizer_decode_cpu.py.
+"""
 
 from __future__ import annotations
 
@@ -235,13 +245,13 @@ def main(argv=None):
         "runs": runs,
     }
     args.out.mkdir(parents=True, exist_ok=True)
-    (args.out / "codec_mps_results.json").write_text(json.dumps(report, indent=2) + "\n")
+    (args.out / "codec_v1_cpu_mps_results.json").write_text(json.dumps(report, indent=2) + "\n")
     lines = ["# P run MPS_SHA256 CPU_SHA256\n"]
     for P in (32, 64):
         for index, run in enumerate(runs, 1):
             entry = run["tables"][str(P)]
             lines.append(f"{P} {index} {entry['mps_sha256']} {entry['cpu_sha256']}\n")
-    (args.out / "codec_mps_sha256.txt").write_text("".join(lines))
+    (args.out / "codec_v1_cpu_mps_sha256.txt").write_text("".join(lines))
     print(json.dumps(summary, indent=2))
     return (
         0

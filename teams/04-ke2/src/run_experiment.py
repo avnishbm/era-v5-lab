@@ -8,7 +8,7 @@ Steps (each can be skipped with ``--skip``):
 ``decode_ref``       forward-encode a sample of IDs, decode with the reference
                      decoder, and repeat the hash in a fresh process              (decode_ref.py)
 ``cpu_determinism``  tokenizer decoding in three fresh CPU processes             (determinism/tokenizer_decode_cpu.py)
-``mps``              forward codec on MPS vs CPU, three fresh processes, if MPS  (determinism/codec_mps.py)
+``mps``              forward codec on MPS vs CPU, three fresh processes, if MPS  (determinism/codec_v1_cpu_mps.py)
 
 Then ``results/experiment/summary.json`` and ``experiment.md`` (team folder) are written from the
 step outputs. Steps that start fresh processes run as subprocesses, so one step cannot leak state
@@ -151,7 +151,7 @@ def step_mps(ctx: Context) -> None:
     if not torch.backends.mps.is_available():
         log.warning("mps: skipped (MPS not available on this machine)")
         return
-    _run([sys.executable, SRC_DIR / "determinism" / "codec_mps.py", "--tables", ctx.tables_dir,
+    _run([sys.executable, SRC_DIR / "determinism" / "codec_v1_cpu_mps.py", "--tables", ctx.tables_dir,
           "--codec-src", ensure_kronecker_embeddings(), "--out", ctx.results])  # fmt: skip
 
 
@@ -172,8 +172,8 @@ def summarize(ctx: Context) -> dict:
     manifest = _read_json(ctx.tables_dir / "manifest.json") or {}
     proofs = _read_json(ctx.results / "proof_checks.json") or {}
     decoded = (_read_json(ctx.results / "decode_ref" / "summary.json") or {}).get("runs", {})
-    cpu = _read_json(ctx.results / "decode_cpu_metadata.json") or {}
-    mps = (_read_json(ctx.results / "codec_mps_results.json") or {}).get("summary", {})
+    cpu = _read_json(ctx.results / "tokenizer_decode_cpu_metadata.json") or {}
+    mps = (_read_json(ctx.results / "codec_v1_cpu_mps_results.json") or {}).get("summary", {})
     per_p = {}
     for P in ctx.pos_dims:
         entry: dict = {"D": 256 * P}

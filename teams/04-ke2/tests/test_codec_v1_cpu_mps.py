@@ -1,4 +1,4 @@
-"""Portable checks plus an explicitly opted-in MPS integration test."""
+"""Original KE1 CPU/MPS checks: portable helpers plus opt-in Apple GPU integration."""
 
 import importlib.util
 import os
@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pytest
 
-SCRIPT = Path(__file__).resolve().parents[1] / "src/determinism/codec_mps.py"
-spec = importlib.util.spec_from_file_location("codec_mps", SCRIPT)
+SCRIPT = Path(__file__).resolve().parents[1] / "src/determinism/codec_v1_cpu_mps.py"
+spec = importlib.util.spec_from_file_location("codec_v1_cpu_mps", SCRIPT)
 cm = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(cm)
 
@@ -80,20 +80,20 @@ def test_table_validation_detects_corruption_and_wrong_tokenizer(tmp_path):
 
 
 def test_mps_integration_opt_in(tmp_path):
-    if os.environ.get("KE2_RUN_MPS_TESTS") != "1":
-        pytest.skip("optional GPU check: set KE2_RUN_MPS_TESTS=1, KE2_MPS_TABLES and KE2_CODEC_SRC")
+    if os.environ.get("KE2_RUN_V1_MPS_TESTS") != "1":
+        pytest.skip("optional GPU check: set KE2_RUN_V1_MPS_TESTS=1, KE2_V1_MPS_TABLES and KE2_V1_CODEC_SRC")
     args = [
         "--tables",
-        os.environ["KE2_MPS_TABLES"],
+        os.environ["KE2_V1_MPS_TABLES"],
         "--codec-src",
-        os.environ["KE2_CODEC_SRC"],
+        os.environ["KE2_V1_CODEC_SRC"],
         "--limit",
         "16",
         "--out",
         str(tmp_path),
     ]
     assert cm.main(args) == 0
-    report = cm.json.loads((tmp_path / "codec_mps_results.json").read_text())
+    report = cm.json.loads((tmp_path / "codec_v1_cpu_mps_results.json").read_text())
     for summary in report["summary"].values():
         assert summary["rows_per_run"] == 16 and summary["mps_three_hashes_match"]
         assert summary["cpu_mps_all_close"]

@@ -79,6 +79,6 @@ def test_three_fresh_processes_and_cli_outputs(tmp_path):
         text=True,
     )
     assert result.returncode == 0, result.stderr
-    assert (output / "decode_cpu_sha256.txt").read_text().splitlines() == [runs[0]["sha256"]] * 3
-    metadata = dc.json.loads((output / "decode_cpu_metadata.json").read_text())
+    assert (output / "tokenizer_decode_cpu_sha256.txt").read_text().splitlines() == [runs[0]["sha256"]] * 3
+    metadata = dc.json.loads((output / "tokenizer_decode_cpu_metadata.json").read_text())
     assert metadata["all_match"] and metadata["runs"] == runs

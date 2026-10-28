@@ -24,10 +24,10 @@ src/
   decode_ref.py           reference decoder: KE vectors -> token ID, raw bytes, margin
   run_experiment.py       every step for P = 32 and 64 -> results/, experiment.md
   proofs/                 forward.py (proof helpers), proof_checks.py (real tokenizer)
-  determinism/            tokenizer_decode_cpu.py, codec_mps.py
+  determinism/            tokenizer_decode_cpu.py, codec_v1_cpu_mps.py
   requirements.txt, ruff.toml
 tests/                    pytest suite (conftest.py finds the tokenizer and builds the table fixtures)
-results/                  committed outputs: tables/, proof_checks.json, decode_ref/, experiment/, decode_cpu_*, codec_mps_*
+results/                  committed outputs: tables/, proof_checks.json, decode_ref/, experiment/, tokenizer_decode_cpu_*, codec_v1_cpu_mps_*
 ```
 
 ### Setup and run
@@ -43,7 +43,7 @@ The tokenizer is never committed and never downloaded implicitly. Without `KE2_T
 looked up in the Hugging Face cache at the pinned revision (`src/ke2/config.py`), and every
 table is bound to its `tokenizer.json` SHA-256 (`01d968a7…739fff`). `build_tables.py --allow-download`
 fetches it when it is missing. The MPS step runs only where MPS is available.
-`KE2_RUN_MPS_TESTS=1` enables the MPS integration test.
+`KE2_RUN_V1_MPS_TESTS=1` enables the MPS integration test.
 
 ### `decode_ref.py`: the reference decoder for G6
 

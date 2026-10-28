@@ -46,7 +46,7 @@ def test_summary_reads_step_outputs(tmp_path):
     write("decode_ref/summary.json", {"runs": {"raw_P32": {"vectors": 4, "ids_recovered": 4, "bytes_recovered": 4,
                                                            "ties": 0, "min_margin": 0.5, "median_margin": 0.9,
                                                            "fresh_process_sha256_equal": True, "sha256": "h"}}})  # fmt: skip
-    write("decode_cpu_metadata.json", {"all_match": True, "runs": [{"sha256": "cpu"}] * 3})
+    write("tokenizer_decode_cpu_metadata.json", {"all_match": True, "runs": [{"sha256": "cpu"}] * 3})
     ctx = rx.Context(tmp_path, (32,), results, 4, 0)
     summary = rx.summarize(ctx)
     raw = summary["per_pos_dim"]["32"]["raw"]
