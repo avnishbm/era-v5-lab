@@ -14,6 +14,7 @@ determinism checks (#54), and adds the reference decoder for G6.
 | [experiment.md](experiment.md) | P = 32 vs P = 64 results (generated) |
 | [proof.md](proof.md) | Lemma 1, Lemma 2, Theorem 1 and their numerical checks |
 | [determinism.md](determinism.md) | CPU decoding repeatability and the optional MPS codec experiment |
+| [decode_ref.md](decode_ref.md) | KE1 reference contract, measurement provenance and CPU decoder comparison |
 
 ### Layout
 
@@ -22,6 +23,7 @@ src/
   ke2/                    shared package: config, hashing, tokenizer, truncation, tables, script_class, codec
   build_tables.py         decode and raw byte tables -> results/tables/
   decode_ref.py           reference decoder: KE vectors -> token ID, raw bytes, margin
+  benchmark_ke1_decode_ref.py  structured cosine vs dense Euclidean CPU experiment
   run_experiment.py       every step for P = 32 and 64 -> results/, experiment.md
   proofs/                 forward.py (proof helpers), proof_checks.py (real tokenizer)
   determinism/            tokenizer_decode_cpu.py, codec_v1_cpu_mps.py
@@ -56,18 +58,24 @@ result = decode(vectors, CodeTable.from_byte_table(table))   # vectors: (N, 256 
 result.token_ids, result.token_bytes, result.margins, result.sha256()
 ```
 
-- **Input:** a batch of KE code vectors (the forward codec's output) and the code table, which is a
+- **Input:** unprojected KE1 forward-codec vectors and a matching code table, which is a
   byte table plus the codec settings (the upstream defaults).
 - **Output:** for each vector, the token ID, its raw bytes, the best cosine similarity, and the
   decode margin: the best minus the second-best cosine over the whole vocabulary.
 - **Guarantees:** runs on CPU in float64 and is exhaustive (every token is scored). It is
-  deterministic: the same input gives the same output and the same SHA-256 (format
-  `ke2-decode-ref-v1`), for any chunk size and in a fresh process. Ties (margin 0) go to the lowest ID.
+  deterministic in the tested environment: matching outputs/hashes across tested query chunk sizes
+  and a fresh process (format `ke2-decode-ref-v1`). Cross-platform bitwise equality is not asserted.
+  Ties (margin 0) go to the lowest ID; zero query vectors are rejected.
 - **CLI:** `python src/decode_ref.py --table <npz> --vectors <npy> [--out decoded.jsonl]` prints the hash.
 
 It is meant to be slow and obviously correct. Each score uses the two-valued structure of the
 codes (Lemma 1), so it gathers L values per token instead of doing a dense V × D product. The test
-checks this against dense float64 codes.
+checks this against dense float64 codes. The existing correctness run uses 4,096 query IDs
+against all 131,072 candidates at P=32 and P=64; its margins cover the full vocabulary.
+Raw tables return original token bytes. Decode-text tables return stored text bytes, which may
+already have lost partial UTF-8 information. The approximate chunk budget covers scoring
+temporaries, not total process memory. See [decode_ref.md](decode_ref.md) for the reproducible
+CPU comparison and why the structured cosine implementation is retained.
 
 ### Notes
 

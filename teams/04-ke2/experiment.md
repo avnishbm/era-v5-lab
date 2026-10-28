@@ -17,15 +17,16 @@ Tokenizer: BrahmicTokenizer-131K, `tokenizer.json` SHA-256 `01d968a7970b029c071b
 | collision groups | 10 | 0 | 10 | 0 |
 | Theorem 1: code groups = cut-string groups (fp32, bf16) | yes | yes | yes | yes |
 | decode_ref: IDs recovered | 4,057 / 4,096 | 4,096 / 4,096 | 4,057 / 4,096 | 4,096 / 4,096 |
-| decode_ref: bytes recovered | 4,096 / 4,096 | 4,096 / 4,096 | 4,096 / 4,096 | 4,096 / 4,096 |
+| decode_ref: stored table bytes matched | 4,096 / 4,096 | 4,096 / 4,096 | 4,096 / 4,096 | 4,096 / 4,096 |
 | decode_ref: ties (margin 0) | 40 | 0 | 40 | 0 |
 | decode_ref: min margin (cosine) | 0 | 0.03181 | 0 | 0.03178 |
 | decode_ref: median margin | 0.134 | 0.134 | 0.134 | 0.134 |
 | decode_ref: same hash in a fresh process | yes | yes | yes | yes |
 
-Decode-table ties are the known issue: partial-character tokens decode to U+FFFD and share rows
-(see collision groups), so the decoder returns the lowest ID of each group. The bytes are still right, because
-every token in a group has the same row. The raw table has no ties, and every ID comes back.
+The reference checks sampled query IDs against every vocabulary candidate; these are full-vocabulary cosine margins.
+Decode-table ties arise when partial-character tokens become U+FFFD and share rows; ties return the lowest ID.
+Stored decode-table byte agreement does not recover original token bytes lost during text decoding.
+Raw-table byte matches preserve original payloads. See [decode_ref.md](decode_ref.md) for scope and performance.
 
 ## Determinism
 

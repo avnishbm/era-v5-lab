@@ -22,8 +22,10 @@ Usage
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import logging
+import platform
 import subprocess
 import sys
 import tempfile
@@ -95,6 +97,9 @@ def step_proofs(ctx: Context) -> None:
 
 def step_decode_ref(ctx: Context) -> None:
     """Round-trip a sample of IDs through the forward codec and the reference decoder."""
+    import torch
+    from kronecker_embeddings import codec as upstream_codec
+
     tb = load_tokenizer(str(ctx.tokenizer_dir / "tokenizer.json"), expected_sha256=TOKENIZER_SHA256)
     ids = decode_ref.sample_token_ids(tb.vocab_size, tb.special_ids, n=ctx.sample, seed=ctx.seed)
     runs: dict[str, dict] = {}
@@ -116,6 +121,8 @@ def step_decode_ref(ctx: Context) -> None:
                     "pos_dim": P,
                     "table_sha256": table.sha256(),
                     "vectors": len(ids),
+                    "candidate_count": table.vocab_size,
+                    "byte_comparison": "stored table-row bytes; original payloads only for raw tables",
                     "ids_recovered": int((result.token_ids == ids).sum()),
                     "bytes_recovered": int(
                         sum(a == b for a, b in zip(result.token_bytes, expected_bytes, strict=True))
@@ -135,7 +142,21 @@ def step_decode_ref(ctx: Context) -> None:
         "format": decode_ref.HASH_FORMAT,
         "encoder": "upstream kronecker_codec, float32, CPU",
         "decoder": "decode_ref.py, cosine similarity, float64, CPU, exhaustive over the vocabulary",
-        "sample": {"n": len(ids), "seed": ctx.seed, "edges": "0, 77, 173, V-1, first 8 special IDs"},
+        "metric": "cosine similarity",
+        "margin": "best cosine minus second-best cosine across all candidates",
+        "determinism_scope": "same tested environment; repeats, query chunk sizes and a fresh process",
+        "timing_scope": "seconds include code-table construction and decode; exclude forward encoding and fresh-process run",
+        "environment": {"python": platform.python_version(), "numpy": np.__version__, "torch": torch.__version__,
+                        "system": platform.system(), "machine": platform.machine(), "device": "cpu"},
+        "source_sha256": {
+            "decode_ref.py": hashlib.sha256(Path(decode_ref.__file__).read_bytes()).hexdigest(),
+            "run_experiment.py": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
+            "ke2/codec.py": hashlib.sha256((SRC_DIR / "ke2/codec.py").read_bytes()).hexdigest(),
+            "ke2/tables.py": hashlib.sha256((SRC_DIR / "ke2/tables.py").read_bytes()).hexdigest(),
+            "upstream_codec.py": hashlib.sha256(Path(upstream_codec.__file__).read_bytes()).hexdigest(),
+        },
+        "sample": {"n": len(ids), "seed": ctx.seed, "edges": "0, 77, 173, V-1, first 8 special IDs",
+                   "query_token_ids": ids.tolist()},
         "runs": runs,
     })  # fmt: skip
 
@@ -261,15 +282,19 @@ def render_markdown(summary: dict, pos_dims: Sequence[int]) -> str:
         row("collision groups", lambda e, k: e[k]["collision_groups"]),
         row("Theorem 1: code groups = cut-string groups (fp32, bf16)", lambda e, k: e[k]["theorem1_partitions_equal"]),
         row("decode_ref: IDs recovered", lambda e, k: f"{dr('ids_recovered')(e, k):,} / {dr('vectors')(e, k):,}"),
-        row("decode_ref: bytes recovered", lambda e, k: f"{dr('bytes_recovered')(e, k):,} / {dr('vectors')(e, k):,}"),
+        row(
+            "decode_ref: stored table bytes matched",
+            lambda e, k: f"{dr('bytes_recovered')(e, k):,} / {dr('vectors')(e, k):,}",
+        ),
         row("decode_ref: ties (margin 0)", dr("ties")),
         row("decode_ref: min margin (cosine)", dr("min_margin")),
         row("decode_ref: median margin", dr("median_margin")),
         row("decode_ref: same hash in a fresh process", dr("fresh_process_sha256_equal")),
         "",
-        "Decode-table ties are the known issue: partial-character tokens decode to U+FFFD and share rows",
-        "(see collision groups), so the decoder returns the lowest ID of each group. The bytes are still right, because",
-        "every token in a group has the same row. The raw table has no ties, and every ID comes back.",
+        "The reference checks sampled query IDs against every vocabulary candidate; these are full-vocabulary cosine margins.",
+        "Decode-table ties arise when partial-character tokens become U+FFFD and share rows; ties return the lowest ID.",
+        "Stored decode-table byte agreement does not recover original token bytes lost during text decoding.",
+        "Raw-table byte matches preserve original payloads. See [decode_ref.md](decode_ref.md) for scope and performance.",
         "",
         "## Determinism",
         "",
