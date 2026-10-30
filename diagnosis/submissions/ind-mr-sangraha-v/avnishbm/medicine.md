@@ -1,40 +1,147 @@
 # Medicine sheet: ind-mr-sangraha-v (avnishbm)
 
-Interim first-150 submission. Labels reflect the user’s full-document decisions. The remaining 350 documents, independent second review, and approved-gold harm tests are pending.
+Counts are documents among all 500 reviewed rows. Medicines operate on copies; the source pack is never modified.
 
-Approved Marathi gold from Data A/B is expected on 29 October 2026 and has not been received. No gold harm-test pass or reviewer agreement is claimed. Final medicine results are due 31 October 2026, 23:59 IST.
+The approved Marathi gold set is not present in the workspace. Therefore no approved-gold pass, changed count, dropped count, or changed/dropped union is claimed. Each proposed medicine remains blocked from scale use until that test is run; affecting more than 1% of the gold-set union fails.
 
-Counts below are documents, not occurrences, in this 150-row submission.
+## A6: 14 documents
 
-## C1: 30 documents
+**Examples:**
+
+- `208b033cb8584898`: A6: "व्यापाºयांकडे" at offset 781
+- `b267d186731a10ca`: A6: "अधिकाºयांनी" at offset 1857
+- `f9a0f6e9ea15b561`: A6: "दुसºया" at offset 917
+
+**Proposed medicine:** Fix only the repeated OCR pattern `º` immediately before Devanagari `य`; replace it with `ऱ्`. Other A6 characters, such as a Latin letter inside a Marathi word, remain manual cases.
+
+**Action:** fix a copy.
+
+```python
+import re
+
+def fix_reviewed_ordinal_ocr(text: str) -> str:
+    return re.sub(r"º(?=य)", "ऱ्", text)
+```
+
+**Side effects:** A legitimate ordinal indicator before Devanagari text would be changed; mixed-script cases outside this exact pattern are not fixed.
+
+**Approved-gold harm test:** NOT RUN — approved Marathi gold is unavailable locally. Record gold size, changed documents, dropped documents, and their union before approval.
+
+## B4: 17 documents
+
+**Examples:**
+
+- `b799128067e71c2b`: B4: "\\n" at offset 97
+- `d8ecdc20a3f919ac`: B4: "\\n" at offset 71
+- `9f1dc749883b0947`: B4: "\\n" at offset 60
+
+**Proposed medicine:** Convert a literal backslash followed by `n` into a real newline only in records confirmed as B4 serialization damage.
+
+**Action:** fix a copy.
+
+```python
+
+def restore_literal_newlines(text: str, confirmed_b4: bool) -> str:
+    return text.replace("\\n", "\n") if confirmed_b4 else text
+```
+
+**Side effects:** Source code, paths, regular expressions, or prose intentionally discussing `\n` would be damaged without the confirmation gate.
+
+**Approved-gold harm test:** NOT RUN — approved Marathi gold is unavailable locally. Record gold size, changed documents, dropped documents, and their union before approval.
+
+## C1: 98 documents
 
 **Examples:**
 
 - `e14f9a0e6e8d1d9b`: C1: "Read Goa news in Marathi" at offset 741
+- `2c66d24bfd6db2ef`: C1: "हे ही वाचाः\nसिद्धू मुसवाला आणि बंदूक कल्चरचा संबंध!" at offset 1082
 - `e9320e666a90a129`: C1: "Read the latest agriculture news in Marathi" at offset 1069
-- `fab4928039a870ab`: C1: "Recover your password.\n A password will be e-mailed to you." at offset 211
 
-**Proposed medicine:** remove an exact, reviewed terminal publisher/UI suffix at a line boundary, leaving substantive article content. This narrow rule addresses only the listed footer layouts; other C1 cases require separate contextual rules.
+**Proposed medicine:** Remove only reviewer-confirmed publisher, navigation, byline, or call-to-action spans. Apply offsets from right to left so earlier offsets remain valid.
 
-**Action:** fix a copy; do not modify the source pack or drop the document.
+**Action:** fix a copy.
 
 ```python
-APPROVED_SUFFIXES = (' Read Goa news in Marathi and Goa local news on Tourism, Business, Politics, Entertainment, Sports and Goa latest news in Marathi on Dainik Gomantak. Get Goa news live updates on the Dainik Gomantak Mobile app for Android and IOS.\n दैनिक गोमन्तक आता सर्व सोशल मीडिया प्लॅटफॉर्मवर. ताज्या घडामोडींसाठी फेसबुक, इन्स्टाग्राम, ट्विटर, शेअर चॅट आणि टेलिग्राम आम्हाला फॉलो करा. तसेच, दैनिक गोमन्तकच्या यूट्यूब चॅनेलला आजच सबस्क्राइब करा. ', ' Read the latest agriculture news in Marathi and watch Agriculture videos on Agrowon. Get the latest updates on Market Intelligence, Market updates, Bazar Bhav, Agriculture Jugad, and Farmer Success Stories.\n ताज्या घडामोडींसाठी फेसबुक, ट्विटर, इन्स्टाग्राम आणि टेलिग्रामवर आम्हाला फॉलो करा. तसेच, एग्रोवनच्या यूट्यूब चॅनेलला आजच सबस्क्राइब करा. ', ' Recover your password.\n A password will be e-mailed to you. ')
 
-def remove_footer(text):
-    for suffix in APPROVED_SUFFIXES:
-        if text.endswith(suffix):
-            start = len(text) - len(suffix)
-            if start > 0 and text[start - 1] == "\n" and text[:start].strip():
-                return text[:start]
-    return text
+def remove_confirmed_spans(text: str, spans: list[tuple[int, int]]) -> str:
+    result = text
+    for start, end in sorted(spans, reverse=True):
+        assert result[start:end] == text[start:end]
+        result = result[:start] + result[end:]
+    return result
 ```
 
-**Side effects:** a legitimate quotation of an entire listed footer at the end of an article could be shortened. Whitespace and wording variants evade exact matching. The rule does not address every C1 layout.
+**Side effects:** A span can be substantive in another document. Offsets must be independently confirmed against the untouched original.
 
-**Approved-gold harm test:** NOT RUN. Gold size, changed count, dropped count and changed-or-dropped union are pending. More than 1% affected fails. Synthetic regressions are not the required gold-set result.
+**Approved-gold harm test:** NOT RUN — approved Marathi gold is unavailable locally. Record gold size, changed documents, dropped documents, and their union before approval.
 
-## D3: 32 documents
+## C3: 19 documents
+
+**Examples:**
+
+- `10cfc7c874a1bb29`: C3: "जीवनाच्या व्याव" at offset 13635
+- `7ac16bc32542abcd`: C3: "जिल्हा निहाय बी ए. ४ आणि ५ :\nअ. क्र." at offset 1175
+- `1ed4c474f5729368`: C3: "ही कल्पनासुद्धां त्याच्या" at offset 8311
+
+**Proposed medicine:** Do not invent missing text. Drop only documents whose beginning, ending, or internal passage was confirmed as unrecoverably truncated; retain punctuation-only cases for manual repair.
+
+**Action:** drop confirmed unrecoverable documents.
+
+```python
+
+def handle_truncation(text: str, unrecoverable: bool) -> str | None:
+    return None if unrecoverable else text
+```
+
+**Side effects:** A complete excerpt can look truncated outside its publication context, so automatic punctuation or sentence-ending heuristics over-drop valid text.
+
+**Approved-gold harm test:** NOT RUN — approved Marathi gold is unavailable locally. Record gold size, changed documents, dropped documents, and their union before approval.
+
+## C4: 10 documents
+
+**Examples:**
+
+- `815eb112e94faf6e`: C4: "परिवहन सेवेत नव्याने" at offset 0
+- `92031296bbaa7d1d`: C4: "Options are: 1.The business layer (Model logic)" at offset 319
+- `f2b8c25ffbcc196c`: C4: "रशियातल्या फिफा विश्वचषक स्पर्धेच्या सामन्यात मेक्सिकोने जर्मनीला 1 - 0 ने पराभूत केले आहे." at offset 555
+
+**Proposed medicine:** Drop a document only after review confirms two unrelated texts with no reliable boundary. If a source-verified boundary exists, split copies and preserve provenance instead.
+
+**Action:** drop confirmed joined documents.
+
+```python
+
+def handle_joined(text: str, confirmed_join: bool) -> str | None:
+    return None if confirmed_join else text
+```
+
+**Side effects:** News roundups, bulletins, related sidebars, and book chapter transitions may legitimately contain several topics.
+
+**Approved-gold harm test:** NOT RUN — approved Marathi gold is unavailable locally. Record gold size, changed documents, dropped documents, and their union before approval.
+
+## C5: 9 documents
+
+**Examples:**
+
+- `f0b421e314af77d6`: C5: "इप्सा इलेक्ट्रिक ब्रेस्ट पंप , डबल एल्व्ही पंप , मॅन्युअल हँड ब्रेस्ट पंप" at offset 193
+- `eef6cb9d0cdb616f`: C5: "राष्ट्रवादी कुणाची?" at offset 793
+- `ed35a697664a3098`: C5: "Mankind Pharma Share Price ।" at offset 1986
+
+**Proposed medicine:** Drop pages confirmed to contain only keyword/headline/link lists. When an article body exists, remove only the confirmed navigation span.
+
+**Action:** drop link-only pages; otherwise fix a copy.
+
+```python
+
+def handle_link_list(text: str, link_only: bool) -> str | None:
+    return None if link_only else text
+```
+
+**Side effects:** Ordinary tables of contents, schedules, bibliographies, and substantive lists can resemble link spam.
+
+**Approved-gold harm test:** NOT RUN — approved Marathi gold is unavailable locally. Record gold size, changed documents, dropped documents, and their union before approval.
+
+## D3: 77 documents
 
 **Examples:**
 
@@ -42,15 +149,43 @@ def remove_footer(text):
 - `a3ae0a2e9168261e`: D3: "किमुक्तम् । तत्र व्यपदेशिवद्वचनमेकाचो" at offset 0
 - `e9320e666a90a129`: D3: "(Agriculture Produce Market Committee Election)" at offset 63
 
-**Medicine status:** no blanket text-removal or translation rule is proposed for natural code-switching, quotations, terminology or glosses. D3 is descriptive under DISEASES.md. Reviewer-selected `fix` verdicts are preserved; the intended treatment of natural D3-only rows needs a consistent lab policy.
+**Proposed medicine:** Preserve natural code switching, names, quotations, acronyms, and technical terms. Remove a mixed-language span only when it is independently confirmed as C1/C5 clutter.
 
-**Action pending:** retain legitimate mixed-language content while that policy is resolved. Publisher/UI text independently labelled C1 may be addressed by the C1 rule. No untested language filter is proposed.
+**Action:** retain text unless another disease supplies a safe fix.
 
-**Side effects to avoid:** deleting English words or translating every English segment would damage legitimate names, quotations, technical terms and code-switching.
+```python
 
-**Approved-gold harm test:** NOT RUN. Gold size, changed count, dropped count and changed-or-dropped union are pending. More than 1% affected fails. Synthetic regressions are not the required gold-set result.
+def preserve_contextual_mixing(text: str) -> str:
+    return text
+```
 
-## F1: 8 documents
+**Side effects:** Blanket English removal or translation destroys legitimate Marathi usage. D3 is descriptive and requires contextual review.
+
+**Approved-gold harm test:** NOT RUN — approved Marathi gold is unavailable locally. Record gold size, changed documents, dropped documents, and their union before approval.
+
+## D4: 28 documents
+
+**Examples:**
+
+- `61b2c25e9513730b`: D4: "काय माजी कर्मचारी किराणा दुकान येथे माजी ग्राहक धावा आणि एक व्यवसाय कार्ड बाहेर हात?" at offset 2793
+- `58d805ccc888c274`: D4: "ेसिंधुदुर्ग" at offset 416
+- `994056d70dd415f8`: D4: "मद्ददाश्चर्य" at offset 1634
+
+**Proposed medicine:** Do not guess a translation. Drop only documents with pervasive confirmed broken grammar; repair isolated errors manually when the intended Marathi is unambiguous.
+
+**Action:** drop pervasive cases; manually fix isolated cases.
+
+```python
+
+def handle_bad_translation(text: str, pervasive: bool) -> str | None:
+    return None if pervasive else text
+```
+
+**Side effects:** OCR damage, speech-recognition errors, dialect, archaic Marathi, and awkward original writing can be mistaken for machine translation.
+
+**Approved-gold harm test:** NOT RUN — approved Marathi gold is unavailable locally. Record gold size, changed documents, dropped documents, and their union before approval.
+
+## F1: 18 documents
 
 **Examples:**
 
@@ -58,10 +193,19 @@ def remove_footer(text):
 - `8924481cb3403322`: F1: private-person residential address at offset 333
 - `3532a8bbeeb1e5fe`: F1: identifiable private-person medical information at offset 49
 
-**Medicine status:** a general private-data rule is pending design and review. Redact only confirmed private spans in a copy; do not infer private status from every number, name, location or public event contact.
+**Proposed medicine:** Redact only confirmed private spans using private start/end metadata; public evidence continues to expose only the type and starting offset.
 
-**Action pending:** span-level redaction or document rejection must be chosen per confirmed case. Current evidence records type and position only; it does not expose sensitive values or provide complete redaction ranges.
+**Action:** fix a copy by redaction.
 
-**Side effects to avoid:** a blanket address/number/name rule can destroy public information, historical references, dates, quantities and legitimate organization contacts.
+```python
 
-**Approved-gold harm test:** NOT RUN. Gold size, changed count, dropped count and changed-or-dropped union are pending. More than 1% affected fails. Synthetic regressions are not the required gold-set result.
+def redact_confirmed(text: str, spans: list[tuple[int, int]]) -> str:
+    result = text
+    for start, end in sorted(spans, reverse=True):
+        result = result[:start] + "[REDACTED]" + result[end:]
+    return result
+```
+
+**Side effects:** Names, dates, public officials, organization contacts, and public-event locations must not be redacted merely because they match a broad pattern.
+
+**Approved-gold harm test:** NOT RUN — approved Marathi gold is unavailable locally. Record gold size, changed documents, dropped documents, and their union before approval.
