@@ -63,29 +63,71 @@ wall time, not GPU kernel-only time. The first six runs use the CPU settings
 above; the width-128 tied and public arms were repeated with five warmups and
 50 measured steps. Each arm ran in a fresh process.
 
-| Width; B×T | Arm | Input lookup ms | Full step ms | MPS current allocated MiB |
+| Width; B×T | Arm | Input lookup ms | Full step ms | Observed MPS phase max MiB |
 | --- | --- | ---: | ---: | ---: |
-| 64; 2×16 | table-tied | 0.217 | 30.680 | 128.8 |
-| 64; 2×16 | table-untied | 0.189 | 35.160 | 256.8 |
-| 64; 2×16 | public byte code | 2.930 | 27.286 | 153.8 |
-| 128; 2×64 | table-tied | 0.267 | 74.831 | 259.2 |
-| 128; 2×64 | table-untied | 0.264 | 88.077 | 515.2 |
-| 128; 2×64 | public byte code | 2.599 | 76.242 | 292.2 |
-| 128; 2×64, 50 steps | table-tied | 0.228 | 75.615 | 259.2 |
-| 128; 2×64, 50 steps | public byte code | 2.226 | 77.264 | 292.2 |
+| 64; 2×16 | table-tied | 0.213 | 27.750 | 144.8 |
+| 64; 2×16 | table-untied | 0.252 | 35.117 | 272.8 |
+| 64; 2×16 | public byte code | 1.644 | 27.259 | 169.8 |
+| 128; 2×64 | table-tied | 0.279 | 74.926 | 323.7 |
+| 128; 2×64 | table-untied | 0.278 | 89.693 | 579.2 |
+| 128; 2×64 | public byte code | 2.308 | 76.239 | 356.2 |
+| 128; 2×64, 50 steps | table-tied | 0.244 | 75.072 | 323.7 |
+| 128; 2×64, 50 steps | public byte code | 2.206 | 76.656 | 356.2 |
 
 The width-128 50-step full-step median is about 2% slower than tied lookup,
-while its input lookup is about 10 times slower. Current MPS allocation after
-the step is 33 MiB higher than tied lookup. `mps_current_allocated_bytes` is
-an end-of-run reading, **not peak accelerator memory**; the JSON also records
-driver allocation, which includes allocator/driver effects. Mac process RSS
-must not be interpreted as a comparable GPU peak. These measurements do not
-show a public byte-code memory advantage over tied lookup on MPS.
+while its input lookup is about nine times slower. The largest sampled
+training-phase allocation is 33 MiB higher than tied lookup. This is a lower
+bound on true peak: transient allocations inside operations can be missed.
+The JSON also records end-of-run and driver allocation; neither is a peak
+live tensor measure. Mac process RSS must not be interpreted as a comparable
+GPU peak. These measurements show no public byte-code memory advantage over
+tied lookup on MPS.
 
 Reproduce by replacing `--device cpu` with `--device mps` in the command
 above. For the repeat, use `--warmup 5 --steps 50`. MPS must be accessible to
 the process; a sandboxed process may report it unavailable even on this Mac.
-The eight `lookup_*_mps*.json` files contain the raw readings.
+The eight width-64/128 `lookup_*_mps*.json` files contain the raw readings.
+
+## Six-layer MPS workload
+
+I also ran a 384-wide, six-layer, six-head model with batch 1 and context
+64 on the same 131,072-token vocabulary. This is a larger shape that fits
+the 8 GB Mac; it is still smaller than a production model. The run includes
+a one-token next-ID probe. Neither model path has a KV cache, so that probe
+recomputes the full context and all logits; it must not be described as a
+cached generation benchmark. Both arms use the same input IDs and random
+seed. Each was run once for five measured steps and twice for 20 steps; the
+table gives the two 20-step medians as ranges to show run variation.
+
+| Arm | Input lookup ms | Full step ms | No-cache next token ms | Observed MPS phase max MiB |
+| --- | ---: | ---: | ---: | ---: |
+| table-tied | 0.37–0.38 | 135.7–139.3 | 12.4–12.7 | 963.4 |
+| public byte code | 7.95–8.03 | 131.5–132.1 | 13.0–13.4 | 1027.9 |
+
+The full-step medians differ by only a few percent, so they support roughly
+similar training speed at this workload. Input lookup remains over 20 times
+slower.
+The public byte-code arm has about 65 MiB more live MPS allocation at the
+largest *sampled training phase boundary*. That value is a lower bound on
+the true peak because a transient allocation inside an operation can be
+missed. The script samples after forward, backward and optimizer, outside
+timed steps. Its JSON also records end-of-run allocation and driver
+allocation. The result still shows no memory win over tied lookup.
+
+Exact repeat command from the lab repository root, with `ARM` set to
+`table-tied` or `public-ke` and `OUT` to the matching JSON filename:
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 python teams/04-ke2/src/timing/compare_public_lookup.py \
+  --arm ARM --device mps --batch-size 1 --seq-len 64 --lookup-tokens 4096 \
+  --width 384 --layers 6 --heads 6 --generation-context 64 \
+  --warmup 5 --steps 20 --out teams/04-ke2/results/timing/OUT
+```
+
+The last repeat printed `full_training_step: median 139.336 ms` and
+`one_token_generation_no_kv_cache: median 12.381 ms` for table-tied;
+`132.058 ms` and `13.395 ms` for public byte code. The six
+`lookup_*_mps_w384_l6_t64*.json` files hold all raw values.
 
 Before claiming practical speed or memory parity for an open-source model,
 repeat at the target model width, context length, batch size and dtype on

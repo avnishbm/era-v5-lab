@@ -5,9 +5,13 @@
   "table_sha256": null,
   "vocab_size": 131072,
   "width": 128,
+  "layers": 1,
+  "heads": 4,
   "batch_size": 2,
   "sequence_length": 64,
   "lookup_tokens": 4096,
+  "generation_context": 0,
+  "generation_next_id": null,
   "device": "mps",
   "torch": "2.14.0",
   "platform": "macOS-27.2.1-arm64-arm-64bit-Mach-O",
@@ -18,35 +22,44 @@
   "parameter_bytes": 67935744,
   "buffer_bytes": 0,
   "optimizer_state_bytes": 135871552,
-  "process_peak_rss_bytes": 597229568,
+  "process_peak_rss_bytes": 627605504,
   "cuda_peak_allocated_bytes": null,
-  "mps_current_allocated_bytes": 271777792,
+  "mps_current_allocated_bytes": 203842048,
   "mps_driver_allocated_bytes": 1227849728,
+  "mps_phase_allocated_bytes": {
+    "before_forward": 203842048,
+    "after_forward": 339374592,
+    "after_backward": 338886912,
+    "after_optimizer": 338886912,
+    "after_cleanup": 203842048
+  },
+  "mps_phase_max_observed_allocated_bytes": 339374592,
   "timings_ms": {
     "input_lookup_forward": {
-      "median": 0.2672084956429899,
-      "p10": 0.2591538999695331,
-      "p90": 0.30549160728696734,
-      "iqr": 0.020948507881257683,
-      "min": 0.2564169990364462,
-      "max": 0.3616659960243851,
+      "median": 0.27902099827770144,
+      "p10": 0.2753291046246886,
+      "p90": 0.29919160588178784,
+      "iqr": 0.005125504685565829,
+      "min": 0.27041599969379604,
+      "max": 0.3380410198587924,
       "n": 10,
-      "spread_pct": 17.341404960171932,
-      "mean": 0.279141595819965,
-      "std": 0.03191649076282483
+      "spread_pct": 8.552224171081763,
+      "mean": 0.2860498963855207,
+      "std": 0.019330935032387486
     },
     "full_training_step": {
-      "median": 74.83131199842319,
-      "p10": 70.43915059766732,
-      "p90": 76.19289559952449,
-      "iqr": 4.4168852546135895,
-      "min": 68.88724997406825,
-      "max": 78.21170901297592,
+      "median": 74.92639600241091,
+      "p10": 73.67757559986785,
+      "p90": 80.59424969251268,
+      "iqr": 4.572374986310024,
+      "min": 72.10137500078417,
+      "max": 80.61037500738166,
       "n": 10,
-      "spread_pct": 7.688953792469134,
-      "mean": 73.63736249972135,
-      "std": 2.999777558250642
-    }
+      "spread_pct": 9.231291589711946,
+      "mean": 76.19346249848604,
+      "std": 3.0597769134539163
+    },
+    "one_token_generation_no_kv_cache": null
   },
-  "wall_seconds": 2.164
+  "wall_seconds": 1.704
 }

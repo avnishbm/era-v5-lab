@@ -59,6 +59,38 @@ def tensor_bytes(tensors) -> int:
     return sum(t.numel() * t.element_size() for t in tensors)
 
 
+def mps_phase_allocations(model, opt, x: torch.Tensor, y: torch.Tensor) -> dict:
+    """Sample live MPS tensor bytes at training phase boundaries, outside timing.
+
+    Args:
+        model: The already warmed up model.
+        opt: Its initialized optimizer.
+        x: Input token IDs for one training step.
+        y: Shifted target token IDs.
+    Returns:
+        Phase-boundary allocations in bytes; transient within-op peaks are
+        not measured.
+    """
+    def sample() -> int:
+        torch.mps.synchronize()
+        return torch.mps.current_allocated_memory()
+
+    opt.zero_grad(set_to_none=True)
+    phases = {"before_forward": sample()}
+    logits, loss = model(x, y)
+    if loss is None:
+        raise AssertionError("memory probe returned no loss")
+    phases["after_forward"] = sample()
+    loss.backward()
+    phases["after_backward"] = sample()
+    opt.step()
+    phases["after_optimizer"] = sample()
+    del logits, loss
+    opt.zero_grad(set_to_none=True)
+    phases["after_cleanup"] = sample()
+    return phases
+
+
 def run(args: argparse.Namespace) -> dict:
     """Build one arm, check the full step, then measure lookup and training.
 
@@ -67,8 +99,13 @@ def run(args: argparse.Namespace) -> dict:
     Returns:
         Serializable measurements and resource accounting for this arm.
     """
-    if min(args.batch_size, args.seq_len, args.lookup_tokens, args.width, args.steps, args.threads) < 1:
+    if min(args.batch_size, args.seq_len, args.lookup_tokens, args.width, args.steps, args.threads,
+           args.layers, args.heads) < 1:
         raise ValueError("workload sizes, repeats and thread count must be positive")
+    if args.width % args.heads:
+        raise ValueError("width must be divisible by heads")
+    if args.generation_context < 0 or args.generation_context > args.seq_len:
+        raise ValueError("generation context must be in 0..seq_len")
     if args.warmup < 0:
         raise ValueError("warmup must be nonnegative")
     torch.set_num_threads(args.threads)
@@ -98,7 +135,7 @@ def run(args: argparse.Namespace) -> dict:
     cfg = ModelConfig(
         vocab_size=vocab, embedding="ke2" if args.arm == "public-ke" else "table",
         tie_embeddings=(args.arm == "table-tied"), block_size=args.seq_len,
-        n_layer=1, n_head=4, n_embd=args.width, ffn="mlp", reversible=False,
+        n_layer=args.layers, n_head=args.heads, n_embd=args.width, ffn="mlp", reversible=False,
         attn_impl="sdpa", ce_impl="torch",
     )
     model = GPT(cfg, token_bytes=token_bytes).to(device)
@@ -110,6 +147,21 @@ def run(args: argparse.Namespace) -> dict:
     with torch.no_grad():
         assert model.tok(lookup_ids).shape == (args.lookup_tokens, args.width)
         lookup_ms = timed(lambda: model.tok(lookup_ids), device, args.warmup, args.steps)
+        generation_ms = None
+        generated_id = None
+        if args.generation_context:
+            context = x[:1, :args.generation_context]
+
+            def generate_one() -> torch.Tensor:
+                logits, _ = model(context)
+                return logits[:, -1, :].argmax(dim=-1)
+
+            generated = generate_one()
+            if generated.shape != (1,):
+                raise AssertionError("generation output shape mismatch")
+            generation_ms = timed(generate_one, device, args.warmup, args.steps)
+            sync(device)
+            generated_id = int(generated.item())
 
     model.train()
     opt = torch.optim.AdamW(model.parameters(), lr=1e-4)
@@ -127,6 +179,7 @@ def run(args: argparse.Namespace) -> dict:
         torch.cuda.reset_peak_memory_stats(device)
     step_ms = timed(train_step, device, args.warmup, args.steps)
     sync(device)
+    mps_phases = mps_phase_allocations(model, opt, x, y) if device.type == "mps" else None
 
     # A tied GPT uses one tensor for token lookup and output logits. Count it
     # once, as ``model.parameters()`` does, and report the optimizer separately.
@@ -140,9 +193,10 @@ def run(args: argparse.Namespace) -> dict:
         "contract": "matched GPT step; public-ke uses Team 6's projected public V1 byte code",
         "tokenizer_sha256": FROZEN_TOKENIZER_SHA256,
         "table_sha256": table_hash,
-        "vocab_size": vocab, "width": args.width,
+        "vocab_size": vocab, "width": args.width, "layers": args.layers, "heads": args.heads,
         "batch_size": args.batch_size, "sequence_length": args.seq_len,
-        "lookup_tokens": args.lookup_tokens,
+        "lookup_tokens": args.lookup_tokens, "generation_context": args.generation_context,
+        "generation_next_id": generated_id,
         "device": str(device), "torch": torch.__version__, "platform": platform.platform(),
         "threads": torch.get_num_threads(), "warmup": args.warmup, "steps": args.steps,
         "parameter_count": sum(p.numel() for p in params),
@@ -153,7 +207,10 @@ def run(args: argparse.Namespace) -> dict:
         "cuda_peak_allocated_bytes": torch.cuda.max_memory_allocated(device) if device.type == "cuda" else None,
         "mps_current_allocated_bytes": torch.mps.current_allocated_memory() if device.type == "mps" else None,
         "mps_driver_allocated_bytes": torch.mps.driver_allocated_memory() if device.type == "mps" else None,
-        "timings_ms": {"input_lookup_forward": lookup_ms, "full_training_step": step_ms},
+        "mps_phase_allocated_bytes": mps_phases,
+        "mps_phase_max_observed_allocated_bytes": max(mps_phases.values()) if mps_phases else None,
+        "timings_ms": {"input_lookup_forward": lookup_ms, "full_training_step": step_ms,
+                       "one_token_generation_no_kv_cache": generation_ms},
     }
 
 
@@ -166,6 +223,10 @@ def main() -> None:
     ap.add_argument("--seq-len", type=int, default=16)
     ap.add_argument("--lookup-tokens", type=int, default=4096)
     ap.add_argument("--width", type=int, default=64)
+    ap.add_argument("--layers", type=int, default=1)
+    ap.add_argument("--heads", type=int, default=4)
+    ap.add_argument("--generation-context", type=int, default=0,
+                    help="time one next token with full-context recomputation; 0 skips")
     ap.add_argument("--warmup", type=int, default=2)
     ap.add_argument("--steps", type=int, default=10)
     ap.add_argument("--threads", type=int, default=4)
@@ -180,6 +241,8 @@ def main() -> None:
     print(f"arm={args.arm} V={result['vocab_size']} width={args.width} tokens={args.lookup_tokens}")
     print(f"input_lookup_forward: median {result['timings_ms']['input_lookup_forward']['median']:.3f} ms")
     print(f"full_training_step: median {result['timings_ms']['full_training_step']['median']:.3f} ms")
+    if result["timings_ms"]["one_token_generation_no_kv_cache"] is not None:
+        print(f"one_token_generation_no_kv_cache: median {result['timings_ms']['one_token_generation_no_kv_cache']['median']:.3f} ms")
     print(f"parameter_bytes={result['parameter_bytes']} optimizer_state_bytes={result['optimizer_state_bytes']}")
     print(f"process_peak_rss_bytes={result['process_peak_rss_bytes']} wall_seconds={result['wall_seconds']:.3f}")
 

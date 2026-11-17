@@ -5,9 +5,13 @@
   "table_sha256": null,
   "vocab_size": 131072,
   "width": 128,
+  "layers": 1,
+  "heads": 4,
   "batch_size": 2,
   "sequence_length": 64,
   "lookup_tokens": 4096,
+  "generation_context": 0,
+  "generation_next_id": null,
   "device": "mps",
   "torch": "2.14.0",
   "platform": "macOS-27.2.1-arm64-arm-64bit-Mach-O",
@@ -18,35 +22,44 @@
   "parameter_bytes": 135044608,
   "buffer_bytes": 0,
   "optimizer_state_bytes": 270089284,
-  "process_peak_rss_bytes": 627785728,
+  "process_peak_rss_bytes": 627654656,
   "cuda_peak_allocated_bytes": null,
-  "mps_current_allocated_bytes": 540213248,
+  "mps_current_allocated_bytes": 405168640,
   "mps_driver_allocated_bytes": 1227849728,
+  "mps_phase_allocated_bytes": {
+    "before_forward": 405168640,
+    "after_forward": 540701184,
+    "after_backward": 607322368,
+    "after_optimizer": 607322368,
+    "after_cleanup": 405168640
+  },
+  "mps_phase_max_observed_allocated_bytes": 607322368,
   "timings_ms": {
     "input_lookup_forward": {
-      "median": 0.26420800713822246,
-      "p10": 0.25776658731047064,
-      "p90": 0.27926220500376076,
-      "iqr": 0.010219511750619859,
-      "min": 0.2545409952290356,
-      "max": 0.31350000062957406,
+      "median": 0.27781199605669826,
+      "p10": 0.2724167163250968,
+      "p90": 0.2897499973187223,
+      "iqr": 0.005458983650896698,
+      "min": 0.25816698325797915,
+      "max": 0.3201249928679317,
       "n": 10,
-      "spread_pct": 8.135869130584114,
-      "mean": 0.26924140111077577,
-      "std": 0.016773311451417035
+      "spread_pct": 6.239212575287064,
+      "mean": 0.28049569809809327,
+      "std": 0.015700367923703787
     },
     "full_training_step": {
-      "median": 88.07654150587041,
-      "p10": 87.26547080441378,
-      "p90": 89.72649189527147,
-      "iqr": 1.473063268349506,
-      "min": 86.4147079992108,
-      "max": 92.0120410155505,
+      "median": 89.69329201499932,
+      "p10": 87.7091747126542,
+      "p90": 91.61376630072482,
+      "iqr": 1.9637184959719889,
+      "min": 86.71887501259334,
+      "max": 92.75391598930582,
       "n": 10,
-      "spread_pct": 2.7941845226673148,
-      "mean": 88.48248730355408,
-      "std": 1.54630674124621
-    }
+      "spread_pct": 4.35327046243063,
+      "mean": 89.61774580820929,
+      "std": 1.770613639015813
+    },
+    "one_token_generation_no_kv_cache": null
   },
-  "wall_seconds": 1.999
+  "wall_seconds": 2.05
 }

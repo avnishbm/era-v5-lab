@@ -5,9 +5,13 @@
   "table_sha256": null,
   "vocab_size": 131072,
   "width": 64,
+  "layers": 1,
+  "heads": 4,
   "batch_size": 2,
   "sequence_length": 16,
   "lookup_tokens": 4096,
+  "generation_context": 0,
+  "generation_next_id": null,
   "device": "mps",
   "torch": "2.14.0",
   "platform": "macOS-27.2.1-arm64-arm-64bit-Mach-O",
@@ -18,35 +22,44 @@
   "parameter_bytes": 33758976,
   "buffer_bytes": 0,
   "optimizer_state_bytes": 67518016,
-  "process_peak_rss_bytes": 381845504,
+  "process_peak_rss_bytes": 561381376,
   "cuda_peak_allocated_bytes": null,
-  "mps_current_allocated_bytes": 135069184,
-  "mps_driver_allocated_bytes": 1127006208,
+  "mps_current_allocated_bytes": 101310208,
+  "mps_driver_allocated_bytes": 1127022592,
+  "mps_phase_allocated_bytes": {
+    "before_forward": 101310208,
+    "after_forward": 135022592,
+    "after_backward": 151846656,
+    "after_optimizer": 151846656,
+    "after_cleanup": 101310208
+  },
+  "mps_phase_max_observed_allocated_bytes": 151846656,
   "timings_ms": {
     "input_lookup_forward": {
-      "median": 0.2172294771298766,
-      "p10": 0.20400450739543885,
-      "p90": 0.2532963990233838,
-      "iqr": 0.02577051054686308,
-      "min": 0.20141698769293725,
-      "max": 0.3587079991120845,
+      "median": 0.2125000028172508,
+      "p10": 0.20815779571421444,
+      "p90": 0.2369000110775232,
+      "iqr": 0.013603996194433421,
+      "min": 0.20470900926738977,
+      "max": 0.2899999963119626,
       "n": 10,
-      "spread_pct": 22.691161567577883,
-      "mean": 0.23183779267128557,
-      "std": 0.04651729974163303
+      "spread_pct": 13.525748226943298,
+      "mean": 0.22220820537768304,
+      "std": 0.025213014287171594
     },
     "full_training_step": {
-      "median": 30.680395997478627,
-      "p10": 29.9343043967383,
-      "p90": 31.399916007649153,
-      "iqr": 1.0938542400253937,
-      "min": 29.548541002441198,
-      "max": 32.02766602043994,
+      "median": 27.750125009333715,
+      "p10": 27.532020807848312,
+      "p90": 28.69192500365898,
+      "iqr": 0.4607599985320121,
+      "min": 27.426457992987707,
+      "max": 31.015499989734963,
       "n": 10,
-      "spread_pct": 4.777029641440423,
-      "mean": 30.64115809975192,
-      "std": 0.7507519576344883
-    }
+      "spread_pct": 4.179816110451885,
+      "mean": 28.112824805430137,
+      "std": 1.0632024473623316
+    },
+    "one_token_generation_no_kv_cache": null
   },
-  "wall_seconds": 1.75
+  "wall_seconds": 0.97
 }
