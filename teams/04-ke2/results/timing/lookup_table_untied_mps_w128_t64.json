@@ -1,0 +1,52 @@
+{
+  "arm": "table-untied",
+  "contract": "matched GPT step; public-ke uses Team 6's projected public V1 byte code",
+  "tokenizer_sha256": "e6b93a93a60520d7b1af2e9242485f443b5596a1e116b8f8798d83bbad25a64b",
+  "table_sha256": null,
+  "vocab_size": 131072,
+  "width": 128,
+  "batch_size": 2,
+  "sequence_length": 64,
+  "lookup_tokens": 4096,
+  "device": "mps",
+  "torch": "2.14.0",
+  "platform": "macOS-27.2.1-arm64-arm-64bit-Mach-O",
+  "threads": 4,
+  "warmup": 2,
+  "steps": 10,
+  "parameter_count": 33761152,
+  "parameter_bytes": 135044608,
+  "buffer_bytes": 0,
+  "optimizer_state_bytes": 270089284,
+  "process_peak_rss_bytes": 627785728,
+  "cuda_peak_allocated_bytes": null,
+  "mps_current_allocated_bytes": 540213248,
+  "mps_driver_allocated_bytes": 1227849728,
+  "timings_ms": {
+    "input_lookup_forward": {
+      "median": 0.26420800713822246,
+      "p10": 0.25776658731047064,
+      "p90": 0.27926220500376076,
+      "iqr": 0.010219511750619859,
+      "min": 0.2545409952290356,
+      "max": 0.31350000062957406,
+      "n": 10,
+      "spread_pct": 8.135869130584114,
+      "mean": 0.26924140111077577,
+      "std": 0.016773311451417035
+    },
+    "full_training_step": {
+      "median": 88.07654150587041,
+      "p10": 87.26547080441378,
+      "p90": 89.72649189527147,
+      "iqr": 1.473063268349506,
+      "min": 86.4147079992108,
+      "max": 92.0120410155505,
+      "n": 10,
+      "spread_pct": 2.7941845226673148,
+      "mean": 88.48248730355408,
+      "std": 1.54630674124621
+    }
+  },
+  "wall_seconds": 1.999
+}

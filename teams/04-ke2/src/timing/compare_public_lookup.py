@@ -151,6 +151,8 @@ def run(args: argparse.Namespace) -> dict:
         "optimizer_state_bytes": tensor_bytes(opt_tensors),
         "process_peak_rss_bytes": peak_bytes,
         "cuda_peak_allocated_bytes": torch.cuda.max_memory_allocated(device) if device.type == "cuda" else None,
+        "mps_current_allocated_bytes": torch.mps.current_allocated_memory() if device.type == "mps" else None,
+        "mps_driver_allocated_bytes": torch.mps.driver_allocated_memory() if device.type == "mps" else None,
         "timings_ms": {"input_lookup_forward": lookup_ms, "full_training_step": step_ms},
     }
 

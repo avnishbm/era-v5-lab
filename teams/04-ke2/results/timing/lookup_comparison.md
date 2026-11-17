@@ -55,7 +55,40 @@ table-untied: input_lookup_forward 0.055 ms; full_training_step 72.217 ms; wall_
 public-ke: input_lookup_forward 11.556 ms; full_training_step 55.055 ms; wall_seconds 1.219
 ```
 
+## Apple M2 MPS follow-up
+
+The same p1536 workload completed on this Mac's MPS device with PyTorch
+2.14.0. Team 6's MPS timer synchronizes at each step boundary and reports
+wall time, not GPU kernel-only time. The first six runs use the CPU settings
+above; the width-128 tied and public arms were repeated with five warmups and
+50 measured steps. Each arm ran in a fresh process.
+
+| Width; B×T | Arm | Input lookup ms | Full step ms | MPS current allocated MiB |
+| --- | --- | ---: | ---: | ---: |
+| 64; 2×16 | table-tied | 0.217 | 30.680 | 128.8 |
+| 64; 2×16 | table-untied | 0.189 | 35.160 | 256.8 |
+| 64; 2×16 | public byte code | 2.930 | 27.286 | 153.8 |
+| 128; 2×64 | table-tied | 0.267 | 74.831 | 259.2 |
+| 128; 2×64 | table-untied | 0.264 | 88.077 | 515.2 |
+| 128; 2×64 | public byte code | 2.599 | 76.242 | 292.2 |
+| 128; 2×64, 50 steps | table-tied | 0.228 | 75.615 | 259.2 |
+| 128; 2×64, 50 steps | public byte code | 2.226 | 77.264 | 292.2 |
+
+The width-128 50-step full-step median is about 2% slower than tied lookup,
+while its input lookup is about 10 times slower. Current MPS allocation after
+the step is 33 MiB higher than tied lookup. `mps_current_allocated_bytes` is
+an end-of-run reading, **not peak accelerator memory**; the JSON also records
+driver allocation, which includes allocator/driver effects. Mac process RSS
+must not be interpreted as a comparable GPU peak. These measurements do not
+show a public byte-code memory advantage over tied lookup on MPS.
+
+Reproduce by replacing `--device cpu` with `--device mps` in the command
+above. For the repeat, use `--warmup 5 --steps 50`. MPS must be accessible to
+the process; a sandboxed process may report it unavailable even on this Mac.
+The eight `lookup_*_mps*.json` files contain the raw readings.
+
 Before claiming practical speed or memory parity for an open-source model,
-repeat at the target model width, context length, batch size, dtype and GPU,
-and compare validation bits per byte at equal training compute. Report both
-prefill and one-token generation throughput and accelerator peak allocation.
+repeat at the target model width, context length, batch size and dtype on
+the target GPU, and compare validation bits per byte at equal training
+compute. Report both prefill and one-token generation throughput and
+accelerator peak allocation.
